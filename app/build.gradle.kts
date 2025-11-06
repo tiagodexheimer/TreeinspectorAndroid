@@ -1,6 +1,8 @@
 plugins {
 	alias(libs.plugins.android.application)
 	alias(libs.plugins.kotlin.android)
+	id("com.google.devtools.ksp") version "1.9.21-1.0.15" // ou
+	id("org.jetbrains.kotlin.kapt")
 }
 
 android {
@@ -54,5 +56,16 @@ dependencies {
 	implementation(libs.volley)
 	implementation(libs.osmdroid)
 	implementation(libs.gson)
+
+	val room_version = "2.6.1"
+
+	implementation("androidx.room:room-runtime:$room_version")
+	annotationProcessor("androidx.room:room-compiler:$room_version")
+
+// Para Kotlin (KAPT)
+	kapt("androidx.room:room-compiler:$room_version")
+
+// Para coroutines (recomendado)
+	implementation("androidx.room:room-ktx:$room_version")
 
 }

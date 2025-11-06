@@ -57,15 +57,22 @@ class RoutesActivity : AppCompatActivity() {
 					val rotaJson = response.getJSONObject(i)
 
 					// *** ESTA É A MUDANÇA PRINCIPAL ***
-					// Mapeia os dados do JSON para o SEU Rota.kt
+					// Mapeia TODOS os dados do JSON para o Rota.kt
 					val rota = Rota(
 						id = rotaJson.getInt("id"),
 						nome = rotaJson.getString("nome"),
-						// Mapeia "created_at" do JSON para "data_criacao" do Rota.kt
-						data_criacao = rotaJson.getString("created_at"),
+
+						// --- CORREÇÃO: Adicionar os campos que faltavam ---
+						// Use optString para campos que podem ser nulos
+						responsavel = rotaJson.optString("responsavel", null),
+						status = rotaJson.optString("status", null),
+						data_rota = rotaJson.optString("data_rota", null),
+
+						// --- CORREÇÃO: Corrigir o nome do parâmetro ---
+						created_at = rotaJson.getString("created_at"),
+
 						// Mapeia "total_demandas" (Int)
 						total_demandas = rotaJson.getInt("total_demandas")
-						// Os campos "responsavel" e "status" do JSON são ignorados
 					)
 					rotas.add(rota)
 				}

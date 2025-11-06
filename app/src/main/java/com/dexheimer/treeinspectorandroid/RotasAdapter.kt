@@ -38,13 +38,14 @@ class RotaAdapter(
 
 		// Preenche os dados na tela
 		holder.nomeTextView.text = rota.nome
-		holder.demandasTextView.text = "Demandas: ${rota.total_demandas}"
+		// A linha abaixo (41) funcionará após você atualizar 'Rota.kt'
+		holder.demandasTextView.text = "Demandas: ${rota.total_demandas ?: 0}"
 
-		// Formata a data (simples)
-		// A data vem como "2024-10-30T14:30:00.000Z"
-		// Vamos pegar apenas a parte antes do "T"
-		val dataFormatada = rota.data_criacao.split("T").firstOrNull() ?: rota.data_criacao
+		// ======== CORREÇÃO ESTÁ AQUI (Linha 46 do arquivo original) ========
+		// Trocamos 'data_criacao' por 'created_at' e adicionamos null-safety ('?.')
+		val dataFormatada = rota.created_at?.split("T")?.firstOrNull() ?: rota.created_at
 		holder.dataTextView.text = "Criada em: $dataFormatada"
+		// ====================================================================
 
 		// A lógica de cor e status foi removida
 

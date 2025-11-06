@@ -61,6 +61,13 @@
                 android:textColor="?attr/colorOnSurfaceVariant"
                 tools:text="Descrição completa da demanda estará aqui. (Futuramente, o formulário de vistoria)" />
 
+            <Button
+                android:id="@+id/btnFinalizarVistoria"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:text="Finalizar Vistoria" />
+
         </LinearLayout>
     </ScrollView>
 
