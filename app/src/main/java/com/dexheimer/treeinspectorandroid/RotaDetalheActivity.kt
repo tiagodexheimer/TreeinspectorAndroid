@@ -1,412 +1,240 @@
 package com.dexheimer.treeinspectorandroid
 
-// Imports de Permissão e Localização
-
-// Imports de Atividades e Resultados
-
-// Imports de UI (Layout)
-
-// Import para o 'edit' do SharedPreferences
-
-// Imports de Rede (Volley e GSON)
-
-// Imports do Google Maps
-
-// Import da Biblioteca de Utilitários (para decodificar o polyline)
-import android.Manifest
-import android.app.Activity
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import android.view.View
 import android.widget.Button
-import android.widget.LinearLayout
-import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
-import androidx.core.content.edit
+import androidx.appcompat.widget.Toolbar
 import com.android.volley.Request
 import com.android.volley.toolbox.JsonObjectRequest
 import com.android.volley.toolbox.Volley
-import com.google.android.gms.maps.CameraUpdateFactory
-import com.google.android.gms.maps.GoogleMap
-import com.google.android.gms.maps.OnMapReadyCallback
-import com.google.android.gms.maps.SupportMapFragment
-import com.google.android.gms.maps.model.LatLng
-import com.google.android.gms.maps.model.LatLngBounds
-import com.google.android.gms.maps.model.MarkerOptions
-import com.google.android.gms.maps.model.PolylineOptions
+import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.google.gson.Gson
-import com.google.maps.android.PolyUtil
+import org.osmdroid.config.Configuration
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.util.GeoPoint
+import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.Marker // Importar o Marker
 
-class RotaDetalheActivity : AppCompatActivity(), OnMapReadyCallback {
+class RotaDetalheActivity : AppCompatActivity() {
 
-	// !! IMPORTANTE: Confirme se este é o IP da sua rede local (Wi-Fi) !!
-	private val API_URL_BASE = "https://tree-inspector-v5.vercel.app/api/rotas"
-	private val LOG_TAG = "RotaDetalheActivity"
+	private val API_BASE_URL = "https://tree-inspector-v5.vercel.app/api"
+	private var listaDemandas: List<Demanda> = emptyList()
+	private var rotaCompleta: Rota? = null
+	private var proximaDemanda: Demanda? = null
 
-	// Constantes para salvar o progresso
-	private val ROUTE_PROGRESS_PREFS = "RouteProgressPrefs"
-	private val PROGRESS_KEY_PREFIX = "progress_rota_"
-
-	// Componentes de UI
-	private lateinit var textViewNomeRota: TextView
-	private lateinit var textViewResponsavel: TextView
-	private lateinit var textViewStatus: TextView
-	private lateinit var progressBarMap: ProgressBar
-	private lateinit var mapFragmentContainer: View
-	private lateinit var panelNavegacao: LinearLayout
-	private lateinit var textProximaParadaContagem: TextView
-	private lateinit var textProximaParadaEndereco: TextView
-	private lateinit var textProximaParadaDetalhe: TextView
-	private lateinit var buttonNavegar: Button
-	private lateinit var buttonIniciarVistoria: Button
-
-	// Mapa e Dados
-	private var googleMap: GoogleMap? = null
-	private var rotaDetalhe: RotaDetalhe? = null
-	private var currentDemandIndex: Int = 0 // O índice da demanda atual
-
-	// Launcher para a Permissão de Localização
-	private val locationPermissionLauncher = registerForActivityResult(
-		ActivityResultContracts.RequestPermission()
-	) { isGranted: Boolean ->
-		if (isGranted) {
-			Log.d(LOG_TAG, "Permissão de localização concedida.")
-			ativarLocalizacaoNoMapa()
-		} else {
-			Log.w(LOG_TAG, "Permissão de localização negada.")
-			Toast.makeText(this, "Permissão de localização negada.", Toast.LENGTH_SHORT).show()
-		}
-	}
-
-	// Launcher para a VistoriaActivity (que salva o progresso)
-	private val vistoriaLauncher = registerForActivityResult(
-		ActivityResultContracts.StartActivityForResult()
-	) { result ->
-		if (result.resultCode == Activity.RESULT_OK) {
-
-			// --- LÓGICA DE SALVAMENTO ---
-			Log.d(LOG_TAG, "Vistoria do índice $currentDemandIndex finalizada. Salvando progresso...")
-
-			val prefs = getSharedPreferences(ROUTE_PROGRESS_PREFS, MODE_PRIVATE)
-			val progressKey = "$PROGRESS_KEY_PREFIX${rotaDetalhe!!.rota.id}"
-
-			// Salva o índice que ACABOU de ser completado
-			prefs.edit {
-				putInt(progressKey, currentDemandIndex)
-				apply() // Salva em background
-			}
-			// ---------------------------
-
-			// Avança para a próxima demanda
-			currentDemandIndex++
-			prepararProximaDemanda()
-		}
-	}
+	// Declaração dos componentes de UI
+	private lateinit var toolbar: Toolbar
+	private lateinit var fabIniciarRota: FloatingActionButton
+	private lateinit var cardProximaVistoria: View
+	private lateinit var tituloProximaParada: TextView
+	private lateinit var enderecoProximaParada: TextView
+	private lateinit var descricaoProximaParada: TextView
+	private lateinit var btnIniciarVistoria: Button
+	private lateinit var mapView: MapView
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
+
+		// Configuração do osmdroid (precisa estar ANTES do setContentView)
+		Configuration.getInstance().load(applicationContext, getSharedPreferences("osmdroid", MODE_PRIVATE))
+
 		setContentView(R.layout.activity_rota_detalhe)
 
-		// Pega os dados passados (ID e Nome)
+		// --- 1. Inicializar Componentes de UI ---
+		toolbar = findViewById(R.id.toolbar)
+		fabIniciarRota = findViewById(R.id.fabIniciarRota)
+		cardProximaVistoria = findViewById(R.id.proximaVistoriaCard)
+		tituloProximaParada = findViewById(R.id.tituloProximaParada)
+		enderecoProximaParada = findViewById(R.id.enderecoProximaParada)
+		descricaoProximaParada = findViewById(R.id.descricaoProximaParada)
+		btnIniciarVistoria = findViewById(R.id.btnIniciarVistoria)
+		mapView = findViewById(R.id.mapView)
+
+		// Configuração da Toolbar
+		setSupportActionBar(toolbar)
+		supportActionBar?.title = getString(R.string.titulo_activity_rota_detalhe)
+		supportActionBar?.setDisplayHomeAsUpEnabled(true)
+
+		// Configuração inicial do Mapa
+		mapView.setTileSource(TileSourceFactory.MAPNIK)
+		mapView.setBuiltInZoomControls(true)
+		mapView.setMultiTouchControls(true)
+
+		// Esconde o card e botões até os dados carregarem
+		cardProximaVistoria.visibility = View.GONE
+		fabIniciarRota.visibility = View.GONE
+
+		// --- 2. Configurar Ações dos Botões ---
+		fabIniciarRota.setOnClickListener {
+			iniciarRotaGoogleMaps()
+		}
+		btnIniciarVistoria.setOnClickListener {
+			abrirDetalheDemanda()
+		}
+
+		// --- 3. Buscar os Dados ---
 		val rotaId = intent.getIntExtra("ROTA_ID", -1)
-		val rotaNome = intent.getStringExtra("ROTA_NOME") ?: "Detalhes da Rota"
-		title = rotaNome
-
-		bindViews()
-		textViewNomeRota.text = rotaNome
-
-		if (rotaId == -1) {
-			Toast.makeText(this, "Erro: ID da Rota inválido", Toast.LENGTH_LONG).show()
-			finish()
-			return
-		}
-
-		setupClickListeners()
-
-		// Inicia o mapa
-		val mapFragment = supportFragmentManager
-			.findFragmentById(R.id.mapFragment) as SupportMapFragment
-		mapFragment.getMapAsync(this) // Isso chama 'onMapReady'
-
-		// Busca os dados da rota no backend
-		fetchDetalhesRota(rotaId)
-	}
-
-	// ===================================================================
-	// --- FUNÇÃO OBRIGATÓRIA (que corrige o erro 'onMapReady') ---
-	// ===================================================================
-	override fun onMapReady(map: GoogleMap) {
-		googleMap = map
-		Log.d(LOG_TAG, "Mapa pronto.")
-
-		// 1. Pede permissão para mostrar o "ponto azul"
-		checarPermissaoLocalizacao()
-
-		// 2. Se os dados da rota já chegaram, desenha a rota no mapa
-		rotaDetalhe?.let { desenharMapa(it.demandas, it.geometry) }
-	}
-	// ===================================================================
-
-
-	// Função para vincular os componentes da UI (findView...)
-	private fun bindViews() {
-		textViewNomeRota = findViewById(R.id.textViewNomeRota)
-		textViewResponsavel = findViewById(R.id.textViewResponsavel)
-		textViewStatus = findViewById(R.id.textViewStatus)
-		progressBarMap = findViewById(R.id.progressBarMap)
-		mapFragmentContainer = findViewById(R.id.mapFragment)
-		panelNavegacao = findViewById(R.id.panelNavegacao)
-		textProximaParadaContagem = findViewById(R.id.textProximaParadaContagem)
-		textProximaParadaEndereco = findViewById(R.id.textProximaParadaEndereco)
-		textProximaParadaDetalhe = findViewById(R.id.textProximaParadaDetalhe)
-		buttonNavegar = findViewById(R.id.buttonNavegar)
-		buttonIniciarVistoria = findViewById(R.id.buttonIniciarVistoria)
-	}
-
-	// Função para configurar os cliques dos botões
-	private fun setupClickListeners() {
-		buttonNavegar.setOnClickListener {
-			navegarParaDemandaAtual()
-		}
-		buttonIniciarVistoria.setOnClickListener {
-			iniciarVistoriaDemandaAtual()
+		if (rotaId != -1) {
+			fetchRotaDetalhes(rotaId)
+		} else {
+			Log.e("RotaDetalheActivity", "ID da Rota inválido.")
+			supportActionBar?.title = "Erro: Rota não encontrada"
 		}
 	}
 
-	// Função para checar se o app TEM permissão de localização
-	private fun checarPermissaoLocalizacao() {
-		when {
-			ContextCompat.checkSelfPermission(
-				this,
-				Manifest.permission.ACCESS_FINE_LOCATION
-			) == PackageManager.PERMISSION_GRANTED -> {
-				// Permissão já concedida, ativa o "ponto azul"
-				ativarLocalizacaoNoMapa()
-			}
-			shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_FINE_LOCATION) -> {
-				// Pedimos direto (poderia ter um popup de explicação)
-				locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
-			}
-			else -> {
-				// Pede a permissão
-				locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
-			}
-		}
+	// Função para o botão "Voltar" da Toolbar
+	override fun onSupportNavigateUp(): Boolean {
+		onBackPressedDispatcher.onBackPressed()
+		return true
 	}
 
-	// Função para ativar o "ponto azul"
-	private fun ativarLocalizacaoNoMapa() {
-		if (googleMap == null) return
-		try {
-			if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
-				== PackageManager.PERMISSION_GRANTED) {
-
-				googleMap?.isMyLocationEnabled = true // O "Ponto Azul"
-				googleMap?.uiSettings?.isMyLocationButtonEnabled = true // O botão de centralizar
-			}
-		} catch (e: SecurityException) {
-			Log.e(LOG_TAG, "Erro de segurança ao ativar localização: ${e.message}")
-		}
-	}
-
-	// Função para buscar os dados da Rota (com carregamento de progresso)
-	private fun fetchDetalhesRota(id: Int) {
-		val url = "$API_URL_BASE/$id"
-		progressBarMap.visibility = View.VISIBLE
-		mapFragmentContainer.visibility = View.INVISIBLE
-
+	// Busca os dados da API usando GSON
+	private fun fetchRotaDetalhes(rotaId: Int) {
 		val queue = Volley.newRequestQueue(this)
+		val url = "$API_BASE_URL/rotas/$rotaId"
+
+		Log.d("RotaDetalheActivity", "Buscando detalhes da rota: $url")
+
 		val jsonObjectRequest = JsonObjectRequest(
 			Request.Method.GET, url, null,
 			{ response ->
-				Log.d(LOG_TAG, "JSON Detalhes Recebido.")
 				try {
 					val gson = Gson()
-					this.rotaDetalhe = gson.fromJson(response.toString(), RotaDetalhe::class.java)
+					val resposta = gson.fromJson(response.toString(), RotaDetalheResponse::class.java)
 
-					textViewResponsavel.text = "Responsável: ${rotaDetalhe!!.rota.responsavel ?: "N/D"}"
-					textViewStatus.text = "Status: ${rotaDetalhe!!.rota.status ?: "N/D"}"
+					// Armazena os dados
+					rotaCompleta = resposta.rota
+					listaDemandas = resposta.demandas
 
-					googleMap?.let { desenharMapa(rotaDetalhe!!.demandas, rotaDetalhe!!.geometry) }
+					// Atualiza o título da Toolbar
+					supportActionBar?.title = rotaCompleta?.nome ?: "Detalhes da Rota"
 
-					progressBarMap.visibility = View.GONE
-					mapFragmentContainer.visibility = View.VISIBLE
-
-					if (rotaDetalhe!!.demandas.isNotEmpty()) {
-
-						// --- LÓGICA DE CARREGAMENTO DE PROGRESSO ---
-						val prefs = getSharedPreferences(ROUTE_PROGRESS_PREFS, MODE_PRIVATE)
-						val progressKey = "$PROGRESS_KEY_PREFIX${rotaDetalhe!!.rota.id}"
-
-						val lastCompletedIndex = prefs.getInt(progressKey, -1) // -1 se não houver
-						currentDemandIndex = lastCompletedIndex + 1 // O próximo a fazer
-
-						Log.d(LOG_TAG, "Progresso carregado. Último salvo: $lastCompletedIndex. Iniciando em: $currentDemandIndex")
-
-						prepararProximaDemanda() // Prepara o painel
-						panelNavegacao.visibility = View.VISIBLE // Mostra o painel
-					}
+					// Atualiza a UI com os dados
+					atualizarUI()
 
 				} catch (e: Exception) {
-					// Erro de GSON (JSON incompatível) ou outro
-					Log.e(LOG_TAG, "Erro no GSON (parsing): ${e.message}", e)
-					showError()
+					Log.e("RotaDetalheActivity", "Erro ao processar JSON com GSON: ${e.message}", e)
 				}
 			},
 			{ error ->
-				// Erro de Rede (Servidor 500, sem conexão, etc)
-				Log.e(LOG_TAG, "Erro de Rede (Volley): ${error.message}", error)
-				showError()
+				Log.e("RotaDetalheActivity", "Erro de Rede (Volley): ${error.message}", error)
 			}
 		)
 		queue.add(jsonObjectRequest)
 	}
 
-	// Função que desenha a ROTA OSRM e os MARCADORES
-	private fun desenharMapa(demandas: List<Demanda>, geometry: String?) {
-		val map = googleMap ?: return
-
-		// 1. Coletar os pontos dos MARCADORES (alfinetes)
-		val pontosDosMarcadores = demandas.mapNotNull { demanda ->
-			demanda.geom?.coordinates?.let { coords ->
-				if (coords.size >= 2) LatLng(coords[1], coords[0]) else null // [lon, lat] -> LatLng(lat, lon)
-			}
-		}
-
-		if (pontosDosMarcadores.isEmpty()) {
-			Toast.makeText(this, "Esta rota não possui pontos no mapa.", Toast.LENGTH_SHORT).show()
+	// Nova função para preencher a UI com os dados da API
+	private fun atualizarUI() {
+		if (listaDemandas.isEmpty()) {
+			// Caso a rota esteja vazia
+			tituloProximaParada.text = "Rota Concluída"
+			enderecoProximaParada.text = "Não há mais paradas nesta rota."
+			descricaoProximaParada.visibility = View.GONE
+			btnIniciarVistoria.visibility = View.GONE
+			fabIniciarRota.visibility = View.GONE
+			cardProximaVistoria.visibility = View.VISIBLE
 			return
 		}
 
-		val boundsBuilder = LatLngBounds.Builder()
+		// Pega a próxima demanda (a primeira da lista)
+		proximaDemanda = listaDemandas[0]
+		val totalParadas = listaDemandas.size
 
-		// 2. Desenhar os MARCADORES (alfinetes)
-		pontosDosMarcadores.forEachIndexed { index, latLng ->
-			map.addMarker(
-				MarkerOptions()
-					.position(latLng)
-					.title("Ponto ${index + 1}")
-			)
-			boundsBuilder.include(latLng) // Adiciona marcador ao zoom
-		}
+		// 1. Preenche o Card "Próxima Vistoria"
+		tituloProximaParada.text = "Próxima Parada (1 de $totalParadas)"
+		enderecoProximaParada.text = "${proximaDemanda?.logradouro ?: "Endereço"} ${proximaDemanda?.numero ?: ""} - ${proximaDemanda?.bairro ?: ""}"
+		descricaoProximaParada.text = proximaDemanda?.descricao ?: "Sem descrição."
 
-		// 3. Desenhar a ROTA (a linha azul das ruas)
-		if (geometry != null && geometry.isNotEmpty()) {
-			try {
-				// Decodifica o 'geometry' (polyline) vindo do OSRM
-				val pontosDaRota: List<LatLng> = PolyUtil.decode(geometry)
+		cardProximaVistoria.visibility = View.VISIBLE
+		fabIniciarRota.visibility = View.VISIBLE
+		btnIniciarVistoria.visibility = View.VISIBLE
 
-				if (pontosDaRota.isNotEmpty()) {
-					val polylineOptions = PolylineOptions()
-						.color(Color.BLUE)
-						.width(12f) // Linha grossa
-						.addAll(pontosDaRota)
-					map.addPolyline(polylineOptions)
+		// 2. Preenche o Mapa
+		val mapController = mapView.controller
+		mapView.overlays.clear() // Limpa marcadores antigos
+
+		// Adiciona marcadores para TODAS as demandas
+		for ((index, demanda) in listaDemandas.withIndex()) {
+			val coords = demanda.geom?.coordinates
+			if (coords != null && coords.size == 2) {
+				val point = GeoPoint(coords[1], coords[0]) // Lat, Lng
+
+				val marker = Marker(mapView)
+				marker.position = point
+				marker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+				marker.title = "Parada ${index + 1}: ${demanda.logradouro}"
+
+				// Define o ícone: verde para a próxima, azul para as restantes
+				if (index == 0) {
+					marker.icon = getDrawable(R.drawable.ic_marker_green) // Ícone verde (precisamos criar)
+				} else {
+					marker.icon = getDrawable(R.drawable.ic_marker_blue) // Ícone azul (precisamos criar)
 				}
-			} catch (e: Exception) {
-				Log.e(LOG_TAG, "Falha ao decodificar polyline: ${e.message}")
+
+				mapView.overlays.add(marker)
 			}
-		} else {
-			Log.w(LOG_TAG, "Geometria OSRM não encontrada. Mostrando apenas marcadores.")
 		}
 
-		// 4. Mover a Câmera (Zoom automático)
-		val bounds = boundsBuilder.build()
-		val padding = 100 // pixels
-		try {
-			map.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, padding))
-		} catch (e: IllegalStateException) {
-			Log.e(LOG_TAG, "Erro ao mover câmera (mapa não pronto): ${e.message}")
-			map.setOnMapLoadedCallback {
-				map.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, padding))
-			}
+		// Centraliza o mapa na primeira demanda
+		val primeiraParadaCoords = proximaDemanda?.geom?.coordinates
+		if (primeiraParadaCoords != null && primeiraParadaCoords.size == 2) {
+			val startPoint = GeoPoint(primeiraParadaCoords[1], primeiraParadaCoords[0])
+			mapController.setZoom(15.0)
+			mapController.setCenter(startPoint)
+		} else {
+			// Fallback se a primeira parada não tiver coords
+			mapController.setZoom(12.0)
+			mapController.setCenter(GeoPoint(-29.8608, -51.1789)) // Ponto fixo
 		}
+		mapView.invalidate() // Redesenha o mapa
 	}
 
-	// Função que atualiza o painel inferior com a PRÓXIMA demanda
-	private fun prepararProximaDemanda() {
-		val demandas = rotaDetalhe?.demandas
-		if (demandas == null || demandas.isEmpty()) return
+	// Ação do clique no FAB "Iniciar Rota"
+	private fun iniciarRotaGoogleMaps() {
+		if (proximaDemanda == null) return
 
-		if (currentDemandIndex < demandas.size) {
-			// Ainda há demandas
-			val proximaDemanda = demandas[currentDemandIndex]
-
-			textProximaParadaContagem.text =
-				"PRÓXIMA PARADA (Ponto ${currentDemandIndex + 1} de ${demandas.size})"
-
-			textProximaParadaEndereco.text =
-				"${proximaDemanda.logradouro ?: "Endereço não informado"}, ${proximaDemanda.numero ?: ""}"
-
-			textProximaParadaDetalhe.text =
-				"Tipo: ${proximaDemanda.tipo_demanda ?: "N/D"} | Bairro: ${proximaDemanda.bairro ?: "N/D"}"
-
-			panelNavegacao.visibility = View.VISIBLE
-
-		} else {
-			// Rota Concluída!
-			panelNavegacao.visibility = View.GONE
-			Toast.makeText(this, "Rota Concluída!", Toast.LENGTH_LONG).show()
-
-			// --- LÓGICA DE LIMPEZA DO PROGRESSO ---
-			Log.d(LOG_TAG, "Rota concluída. Limpando progresso salvo.")
-			val prefs = getSharedPreferences(ROUTE_PROGRESS_PREFS, MODE_PRIVATE)
-			val progressKey = "$PROGRESS_KEY_PREFIX${rotaDetalhe!!.rota.id}"
-			prefs.edit {
-				remove(progressKey)
-				apply()
-			}
-			// -------------------------------------
-		}
-	}
-
-	// Função que chama o app Google Maps (externo)
-	private fun navegarParaDemandaAtual() {
-		val demanda = rotaDetalhe?.demandas?.getOrNull(currentDemandIndex) ?: return
-
-		val latLng = demanda.geom?.coordinates?.let { coords ->
-			if (coords.size >= 2) LatLng(coords[1], coords[0]) else null
-		}
-
-		if (latLng != null) {
-			val gmmIntentUri = Uri.parse("google.navigation:q=${latLng.latitude},${latLng.longitude}")
+		val coords = proximaDemanda?.geom?.coordinates
+		if (coords != null && coords.size == 2) {
+			val latitude = coords[1]
+			val longitude = coords[0]
+			val gmmIntentUri = Uri.parse("google.navigation:q=$latitude,$longitude")
 			val mapIntent = Intent(Intent.ACTION_VIEW, gmmIntentUri)
 			mapIntent.setPackage("com.google.android.apps.maps")
 
 			if (mapIntent.resolveActivity(packageManager) != null) {
 				startActivity(mapIntent)
 			} else {
-				Toast.makeText(this, "Google Maps não instalado.", Toast.LENGTH_SHORT).show()
+				Toast.makeText(this, "Google Maps não instalado", Toast.LENGTH_SHORT).show()
 			}
 		} else {
-			Toast.makeText(this, "Coordenadas inválidas para esta demanda.", Toast.LENGTH_SHORT).show()
+			Toast.makeText(this, "Coordenadas inválidas para a parada", Toast.LENGTH_SHORT).show()
 		}
 	}
 
-	// Função que chama a tela de Vistoria
-	private fun iniciarVistoriaDemandaAtual() {
-		val demanda = rotaDetalhe?.demandas?.getOrNull(currentDemandIndex) ?: return
-		val intent = Intent(this, VistoriaActivity::class.java)
-		intent.putExtra("DEMANDA_EXTRA", demanda)
-		vistoriaLauncher.launch(intent)
-	}
+	// Ação do clique no botão "Iniciar Vistoria"
+	private fun abrirDetalheDemanda() {
+		if (proximaDemanda == null) return
 
-	// Função para mostrar erro genérico (Falha ao carregar...)
-	private fun showError() {
-		progressBarMap.visibility = View.GONE
-		// Só mostra o erro se o painel de navegação não estiver visível
-		// (evita cobrir os dados caso o mapa falhe mas o resto não)
-		if(panelNavegacao.visibility != View.VISIBLE) {
-			Toast.makeText(this, "Falha ao carregar detalhes da rota", Toast.LENGTH_LONG).show()
+		val intent = Intent(this, DemandaDetalheActivity::class.java).apply {
+			putExtra("DEMANDA_EXTRA", proximaDemanda)
 		}
+		startActivity(intent)
 	}
 
-} // <-- FIM DA CLASSE RotaDetalheActivity
+	// Ciclo de vida do Mapa (necessário)
+	override fun onResume() {
+		super.onResume()
+		mapView.onResume()
+	}
+
+	override fun onPause() {
+		super.onPause()
+		mapView.onPause()
+	}
+}

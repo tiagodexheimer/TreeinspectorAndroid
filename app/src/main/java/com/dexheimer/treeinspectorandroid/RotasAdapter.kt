@@ -1,58 +1,62 @@
 package com.dexheimer.treeinspectorandroid
 
-import android.content.Context
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.ArrayAdapter
 import android.widget.TextView
-import java.text.SimpleDateFormat
-import java.util.Locale
-import java.util.TimeZone
+import androidx.recyclerview.widget.RecyclerView
+// Remova a importação do Chip se não for mais usada
+// import com.google.android.material.chip.Chip
 
-class RotasAdapter(context: Context, rotas: List<Rota>) :
-	ArrayAdapter<Rota>(context, 0, rotas) {
+// O adapter recebe a lista de rotas (do seu Rota.kt) e a função de clique
+class RotaAdapter(
+	private var rotas: List<Rota>,
+	private val onItemClick: (Int) -> Unit // Função lambda que recebe o ID da rota
+) : RecyclerView.Adapter<RotaAdapter.RotaViewHolder>() {
 
-	// Formatos de data para parsear o ISO (vem do banco) e formatar (para exibir)
-	private val parser = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
-		timeZone = TimeZone.getTimeZone("UTC")
+	// 1. ViewHolder: Mapeia as Views do NOVO item_rota.xml
+	class RotaViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+		val nomeTextView: TextView = itemView.findViewById(R.id.rotaNomeTextView)
+		val demandasTextView: TextView = itemView.findViewById(R.id.rotaDemandasTextView)
+		val dataTextView: TextView = itemView.findViewById(R.id.rotaDataTextView)
+		// Os campos de responsável e status foram removidos
 	}
-	private val formatter = SimpleDateFormat("dd/MM/yyyy 'às' HH:mm", Locale.getDefault())
 
-	override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
-		// 1. Pega o layout que criamos (list_item_rota.xml)
-		val view = convertView ?: LayoutInflater.from(context)
-			.inflate(R.layout.list_item_rota, parent, false)
+	// 2. onCreateViewHolder: Infla o layout (sem mudança aqui)
+	override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RotaViewHolder {
+		val view = LayoutInflater.from(parent.context)
+			.inflate(R.layout.item_rota, parent, false)
+		return RotaViewHolder(view)
+	}
 
-		// 2. Pega o item de dados (Rota) para esta posição
-		val rota = getItem(position)
+	// 3. getItemCount: (Sem mudança aqui)
+	override fun getItemCount() = rotas.size
 
-		// 3. Encontra os TextViews dentro do layout
-		val textViewNome = view.findViewById<TextView>(R.id.textViewRotaNome)
-		val textViewData = view.findViewById<TextView>(R.id.textViewDataCriacao)
-		val textViewDemandas = view.findViewById<TextView>(R.id.textViewContagemDemandas)
+	// 4. onBindViewHolder: Conecta os dados do SEU Rota.kt com as Views
+	override fun onBindViewHolder(holder: RotaViewHolder, position: Int) {
+		val rota = rotas[position]
 
-		if (rota != null) {
-			// 4. Preenche os dados
-			textViewNome.text = rota.nome
+		// Preenche os dados na tela
+		holder.nomeTextView.text = rota.nome
+		holder.demandasTextView.text = "Demandas: ${rota.total_demandas}"
 
-			// Formata a data (Este bloco continua igual e funciona)
-			try {
-				val dataFormatada = parser.parse(rota.data_criacao)?.let {
-					formatter.format(it)
-				} ?: "Data indisponível"
-				textViewData.text = "Criada em: $dataFormatada"
-			} catch (e: Exception) {
-				textViewData.text = "Data inválida"
-			}
+		// Formata a data (simples)
+		// A data vem como "2024-10-30T14:30:00.000Z"
+		// Vamos pegar apenas a parte antes do "T"
+		val dataFormatada = rota.data_criacao.split("T").firstOrNull() ?: rota.data_criacao
+		holder.dataTextView.text = "Criada em: $dataFormatada"
 
-			// ***** A CORREÇÃO ESTÁ AQUI *****
-			// Antes: val contagem = rota.demandas.size (Dava erro)
-			// Agora:
-			val contagem = rota.total_demandas // Usamos o campo Int direto do JSON
-			textViewDemandas.text = "$contagem ${if (contagem == 1) "demanda" else "demandas"}"
+		// A lógica de cor e status foi removida
+
+		// Define a ação de clique no item (sem mudança aqui)
+		holder.itemView.setOnClickListener {
+			onItemClick(rota.id)
 		}
+	}
 
-		return view
+	// 5. Função para atualizar a lista (sem mudança aqui)
+	fun updateData(newRotas: List<Rota>) {
+		rotas = newRotas
+		notifyDataSetChanged() // Informa ao adapter que os dados mudaram
 	}
 }

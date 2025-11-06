@@ -1,5 +1,7 @@
 <resources>
     <string name="app_name">TreeInspectorAndroid</string>
-
     <string name="ver_rotas">Ver Rotas</string>
+
+    <string name="titulo_activity_rotas">Rotas Disponíveis</string>
+    <string name="titulo_activity_rota_detalhe">Detalhes da Rota</string>
 </resources>

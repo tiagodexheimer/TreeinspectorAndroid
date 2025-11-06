@@ -1,17 +1,19 @@
 package com.dexheimer.treeinspectorandroid
 
 import com.google.gson.annotations.SerializedName
-import java.io.Serializable // IMPORTANTE
+import java.io.Serializable
 
-// Implementamos Serializable para passar o objeto entre Activities
+/**
+ * Classe principal que representa uma Demanda (uma parada na rota).
+ * Ela usa a classe 'Geom' (definida em Geom.kt)
+ */
 data class Demanda(
 	@SerializedName("id")
 	val id: Int,
 
 	@SerializedName("geom")
-	val geom: Geom?,
+	val geom: Geom?, // <-- CORRETO: Usa a classe do Geom.kt
 
-	// ---- NOVOS CAMPOS ADICIONADOS ----
 	@SerializedName("logradouro")
 	val logradouro: String?,
 
@@ -22,9 +24,12 @@ data class Demanda(
 	val bairro: String?,
 
 	@SerializedName("tipo_demanda")
-	val tipo_demanda: String?
+	val tipo_demanda: String?,
 
-	// Nota: O GSON irá ignorar os outros campos (status_nome, etc.)
-	// que não definimos aqui.
+	@SerializedName("descricao")
+	val descricao: String?
 
-) : Serializable // IMPORTANTE
+) : Serializable
+
+// ---- APAGUE QUALQUER OUTRA DEFINIÇÃO DE CLASSE DESTE ARQUIVO ----
+// (Não deve haver 'data class Geom' ou 'data class RotaDetalheResponse' aqui)

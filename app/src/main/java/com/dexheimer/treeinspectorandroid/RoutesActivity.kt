@@ -3,90 +3,78 @@ package com.dexheimer.treeinspectorandroid
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
-import android.view.View
-import android.widget.ListView
-import android.widget.ProgressBar
-import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.Toolbar
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.android.volley.Request
 import com.android.volley.toolbox.JsonArrayRequest
 import com.android.volley.toolbox.Volley
-import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
 
 class RoutesActivity : AppCompatActivity() {
 
-	private val API_URL = "https://tree-inspector-v5.vercel.app/api/rotas" // <-- Verifique se está correto
-	private val LOG_TAG = "RoutesActivity" // <-- Tag para filtrar o Logcat
-
-	private lateinit var listViewRoutes: ListView
-	private lateinit var progressBar: ProgressBar
-	private lateinit var textViewError: TextView
+	private val API_URL = "https://tree-inspector-v5.vercel.app/api/rotas"
+	private lateinit var recyclerView: RecyclerView
+	private lateinit var rotaAdapter: RotaAdapter
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
 		setContentView(R.layout.activity_routes)
 
-		listViewRoutes = findViewById(R.id.listViewRoutes)
-		progressBar = findViewById(R.id.progressBar)
-		textViewError = findViewById(R.id.textViewError)
+		val toolbar: Toolbar = findViewById(R.id.toolbar)
+		setSupportActionBar(toolbar)
 
-		fetchRotas()
+		supportActionBar?.title = getString(R.string.titulo_activity_rotas)
+		supportActionBar?.setDisplayHomeAsUpEnabled(true)
 
-		listViewRoutes.setOnItemClickListener { parent, view, position, id ->
-			val rotaSelecionada = parent.adapter.getItem(position) as Rota
+		recyclerView = findViewById(R.id.routesRecyclerView)
+		recyclerView.layoutManager = LinearLayoutManager(this)
 
-			// Cria a intenção para abrir a nova Activity
+		// O adapter agora é inicializado corretamente (sem erro de referência)
+		rotaAdapter = RotaAdapter(emptyList()) { rotaId ->
 			val intent = Intent(this, RotaDetalheActivity::class.java).apply {
-				// Adiciona o ID da rota como um "extra"
-				putExtra("ROTA_ID", rotaSelecionada.id)
-				putExtra("ROTA_NOME", rotaSelecionada.nome) // Passa o nome também
+				putExtra("ROTA_ID", rotaId)
 			}
 			startActivity(intent)
 		}
+		recyclerView.adapter = rotaAdapter
+
+		fetchRoutes()
 	}
 
-	private fun fetchRotas() {
-		progressBar.visibility = View.VISIBLE
-		listViewRoutes.visibility = View.GONE
-		textViewError.visibility = View.GONE
+	override fun onSupportNavigateUp(): Boolean {
+		onBackPressedDispatcher.onBackPressed()
+		return true
+	}
 
+	private fun fetchRoutes() {
 		val queue = Volley.newRequestQueue(this)
-
 		val jsonArrayRequest = JsonArrayRequest(
 			Request.Method.GET, API_URL, null,
 			{ response ->
-				// SUCESSO! Vamos tentar o parsing
-				Log.d(LOG_TAG, "JSON Recebido: $response") // <-- LOG DA RESPOSTA
+				val rotas = mutableListOf<Rota>()
+				for (i in 0 until response.length()) {
+					val rotaJson = response.getJSONObject(i)
 
-				try {
-					val gson = Gson()
-					val tipoListaRotas = object : TypeToken<List<Rota>>() {}.type
-					val rotas: List<Rota> = gson.fromJson(response.toString(), tipoListaRotas)
-
-					val adapter = RotasAdapter(this, rotas)
-					listViewRoutes.adapter = adapter
-
-					progressBar.visibility = View.GONE
-					listViewRoutes.visibility = View.VISIBLE
-
-				} catch (e: Exception) {
-					// Erro ao processar o JSON
-					Log.e(LOG_TAG, "Erro no GSON (parsing): ${e.message}", e) // <-- LOG DO ERRO DE PARSING
-					showError()
+					// *** ESTA É A MUDANÇA PRINCIPAL ***
+					// Mapeia os dados do JSON para o SEU Rota.kt
+					val rota = Rota(
+						id = rotaJson.getInt("id"),
+						nome = rotaJson.getString("nome"),
+						// Mapeia "created_at" do JSON para "data_criacao" do Rota.kt
+						data_criacao = rotaJson.getString("created_at"),
+						// Mapeia "total_demandas" (Int)
+						total_demandas = rotaJson.getInt("total_demandas")
+						// Os campos "responsavel" e "status" do JSON são ignorados
+					)
+					rotas.add(rota)
 				}
+				rotaAdapter.updateData(rotas)
 			},
 			{ error ->
-				// Erro na requisição (Rede)
-				Log.e(LOG_TAG, "Erro de Rede (Volley): ${error.message}", error) // <-- LOG DO ERRO DE REDE
-				showError()
+				Log.e("RoutesActivity", "Erro de Rede (Volley): ${error.message}", error)
 			}
 		)
 		queue.add(jsonArrayRequest)
-	}
-
-	private fun showError() {
-		progressBar.visibility = View.GONE
-		textViewError.visibility = View.VISIBLE
 	}
 }

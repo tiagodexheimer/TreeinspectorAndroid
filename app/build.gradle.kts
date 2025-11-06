@@ -50,5 +50,9 @@ dependencies {
 	implementation("com.google.code.gson:gson:2.10.1")
 	implementation("com.google.android.gms:play-services-maps:18.2.0")
 	implementation("com.google.maps.android:maps-utils-ktx:3.4.0")
+	implementation(libs.androidx.constraintlayout)
+	implementation(libs.volley)
+	implementation(libs.osmdroid)
+	implementation(libs.gson)
 
 }
