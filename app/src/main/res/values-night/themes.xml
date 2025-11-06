@@ -1,7 +1,21 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme. -->
     <style name="Base.Theme.TreeInspectorAndroid" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Customize your dark theme here. -->
-        <!-- <item name="colorPrimary">@color/my_dark_primary</item> -->
+
+        <item name="colorPrimary">@color/tree_green_primary</item>
+        <item name="colorPrimaryVariant">@color/tree_green_dark</item>
+        <item name="colorOnPrimary">@color/white</item>
+
+        <item name="colorSecondary">@color/tree_brown_secondary</item>
+        <item name="colorSecondaryVariant">@color/tree_brown_secondary</item>
+        <item name="colorOnSecondary">@color/white</item>
+
+        <item name="android:statusBarColor">@color/tree_green_dark</item>
+
+        <item name="android:colorBackground">@color/tree_beige_background</item>
+
+        <item name="colorSurface">@color/white</item>
+        <item name="colorOnSurface">@color/black</item>
     </style>
+
+    <style name="Theme.TreeInspectorAndroid" parent="Base.Theme.TreeInspectorAndroid" />
 </resources>
