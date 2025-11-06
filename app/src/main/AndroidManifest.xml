@@ -6,12 +6,14 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
+    <meta-data
+        android:name="MAPBOX_ACCESS_TOKEN"
+        android:value="pk.eyJ1IjoiZmVuaXhwYWx3YXNoYSIsImEiOiJjbWhucjhld2cwM2psMnlvZW5scm5oc3hqIn0.bmDLm2Be7YZzgnjqPyydfA" />
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
-
         android:fullBackupContent="@xml/backup_rules"
-
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -37,6 +39,9 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".NavegacaoActivity"
+            android:theme="@style/Theme.TreeInspectorAndroid.NoActionBar" />
     </application>
 
 </manifest>
