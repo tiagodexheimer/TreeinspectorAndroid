@@ -56,6 +56,7 @@ dependencies {
 	implementation(libs.volley)
 	implementation(libs.osmdroid)
 	implementation(libs.gson)
+	implementation("com.google.android.gms:play-services-location:21.2.0")
 
 	val room_version = "2.6.1"
 
