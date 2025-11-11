@@ -5,4 +5,5 @@
 
     <string name="titulo_activity_rotas">Minhas Rotas</string>
     <string name="titulo_activity_rota_detalhe">Detalhes da Rota</string>
+    <string name="ver_rotas">Ver Rotas</string>
 </resources>

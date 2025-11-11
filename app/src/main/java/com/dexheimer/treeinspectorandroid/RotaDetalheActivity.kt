@@ -25,6 +25,7 @@ import com.android.volley.toolbox.Volley
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
 import com.google.android.material.floatingactionbutton.FloatingActionButton
+import com.google.android.material.snackbar.Snackbar // <-- ADICIONADO: Import para Snackbar
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -46,6 +47,7 @@ class RotaDetalheActivity : AppCompatActivity() {
 	private var rotaCompleta: Rota? = null
 	private var proximaDemanda: Demanda? = null
 	private var totalParadasInicial: Int = 0
+	private var lastCompletedDemanda: Demanda? = null // <-- NOVO ESTADO: Armazena a última demanda concluída
 
 	// --- Componentes de UI ---
 	private lateinit var toolbar: Toolbar
@@ -86,35 +88,29 @@ class RotaDetalheActivity : AppCompatActivity() {
 
 	/**
 	 * Launcher para a tela de Detalhe.
-	 * Ao concluir, também remove a demanda do banco de dados local.
+	 * Ao concluir, remove a demanda temporariamente para a opção de Desfazer.
 	 */
 	private val vistoriaLauncher = registerForActivityResult(
 		ActivityResultContracts.StartActivityForResult()
 	) { result ->
+		// Verifica se a vistoria foi finalizada com sucesso (RESULT_OK)
 		if (result.resultCode == Activity.RESULT_OK) {
-			Log.d("RotaDetalheActivity", "Vistoria da demanda #${proximaDemanda?.id} concluída.")
+			val demandaConcluida = proximaDemanda ?: return@registerForActivityResult // Garante que há uma demanda
 
-			val demandaConcluida = proximaDemanda // Guarda a referência
-
-			// 1. Remove da lista em memória
+			// 1. Guarda a demanda e a remove da lista em memória (temporariamente)
+			lastCompletedDemanda = demandaConcluida
 			if (listaDemandas.isNotEmpty()) {
 				listaDemandas.removeAt(0)
 			}
 
-			// 2. Remove do banco de dados local (para persistência offline)
-			if (demandaConcluida != null) {
-				lifecycleScope.launch(Dispatchers.IO) {
-					try {
-						db.demandaDao().deleteDemanda(demandaConcluida)
-						Log.d("RotaDetalheActivity", "Demanda #${demandaConcluida.id} removida do cache local.")
-					} catch (e: Exception) {
-						Log.e("RotaDetalheActivity", "Erro ao remover demanda do cache", e)
-					}
-				}
-			}
+			Log.d("RotaDetalheActivity", "Vistoria da demanda #${demandaConcluida.id} concluída. Removida em memória.")
 
-			// 3. Atualiza a UI para mostrar a próxima demanda
+			// 2. Atualiza a UI para mostrar a próxima demanda (ou rota concluída)
 			atualizarUI()
+
+			// 3. Mostra o Snackbar para a opção Desfazer
+			showUndoSnackbar(demandaConcluida)
+
 		} else {
 			Log.d("RotaDetalheActivity", "Vistoria não finalizada (usuário voltou).")
 		}
@@ -388,7 +384,7 @@ class RotaDetalheActivity : AppCompatActivity() {
 				// 3. Receber Resposta
 				Log.d("RotaDetalheActivity", "Otimização recebida: $response")
 				try {
-					val optimizedDemandsJson = response.getJSONArray("optimizedDemands")
+					val optimizedDemandasJson = response.getJSONArray("optimizedDemandas")
 
 					// Ler o ponto de partida que o backend USOU (seja o do usuário ou a base)
 					val startPointJson = response.optJSONObject("startPoint")
@@ -405,8 +401,8 @@ class RotaDetalheActivity : AppCompatActivity() {
 					val gson = Gson()
 					val sortedDemandaList = mutableListOf<Demanda>()
 
-					for (i in 0 until optimizedDemandsJson.length()) {
-						val demandaObj = optimizedDemandsJson.getJSONObject(i).toString()
+					for (i in 0 until optimizedDemandasJson.length()) {
+						val demandaObj = optimizedDemandasJson.getJSONObject(i).toString()
 						// Usamos o Gson para converter o objeto JSON de volta para a classe Demanda
 						val demanda = gson.fromJson(demandaObj, Demanda::class.java)
 						sortedDemandaList.add(demanda)
@@ -482,6 +478,62 @@ class RotaDetalheActivity : AppCompatActivity() {
 			}
 		}
 	}
+
+	// --- Lógica de Desfazer (Undo) --- // <-- NOVAS FUNÇÕES
+
+	/**
+	 * Mostra o Snackbar com a opção Desfazer.
+	 */
+	private fun showUndoSnackbar(demanda: Demanda) {
+		// Usamos o ID do CoordinatorLayout (R.id.main) que é o pai ideal para o Snackbar.
+		val rootView = findViewById<View>(R.id.main)
+		val message = "Demanda #${demanda.id} concluída."
+
+		Snackbar.make(rootView, message, Snackbar.LENGTH_LONG)
+			.setAction("DESFAZER") {
+				undoVistoria(demanda)
+			}
+			.addCallback(object : Snackbar.Callback() {
+				override fun onDismissed(transientBottomBar: Snackbar?, event: Int) {
+					// Se o Snackbar desaparecer sem o UNDO ter sido clicado (TIMEOUT/SWIPE)
+					if (event != DISMISS_EVENT_ACTION) {
+						finalizeDemandaDeletion(demanda)
+					}
+					lastCompletedDemanda = null // Limpa a referência
+				}
+			})
+			.show()
+	}
+
+	/**
+	 * Reverte a remoção da vistoria.
+	 */
+	private fun undoVistoria(demanda: Demanda) {
+		// 1. Coloca a demanda de volta no início da lista em memória
+		listaDemandas.add(0, demanda)
+
+		// 2. Atualiza a UI para mostrar o item anterior
+		atualizarUI()
+		Log.d("RotaDetalheActivity", "Demanda #${demanda.id} desfeita e restaurada em memória.")
+		Toast.makeText(this, "Ação desfeita. Vistoria restaurada.", Toast.LENGTH_SHORT).show()
+	}
+
+	/**
+	 * Confirma a exclusão da demanda (chamado pelo timeout do Snackbar).
+	 */
+	private fun finalizeDemandaDeletion(demanda: Demanda) {
+		Log.d("RotaDetalheActivity", "Confirmando exclusão da demanda #${demanda.id} do cache.")
+		// Remove do banco de dados local (para persistência offline)
+		lifecycleScope.launch(Dispatchers.IO) {
+			try {
+				db.demandaDao().deleteDemanda(demanda)
+				Log.d("RotaDetalheActivity", "Demanda #${demanda.id} removida do cache local.")
+			} catch (e: Exception) {
+				Log.e("RotaDetalheActivity", "Erro ao remover demanda do cache", e)
+			}
+		}
+	}
+	// --- Fim da Lógica de Desfazer (Undo) ---
 
 	// --- Lógica da UI (Funções restantes) ---
 
