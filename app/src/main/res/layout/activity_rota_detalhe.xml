@@ -67,10 +67,10 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="12dp"
-                        android:ellipsize="end"
                         android:maxLines="3"
+                        android:ellipsize="end"
                         android:textAppearance="?attr/textAppearanceBodyMedium"
-                        android:textColor="@color/black"
+                        android:textColor="?attr/colorOnSurfaceVariant"
                         tools:text="Descrição da demanda, poda de árvore grande na frente da casa, risco de queda..." />
 
                     <com.google.android.material.button.MaterialButton
@@ -114,8 +114,6 @@
         android:layout_gravity="bottom|end"
         android:layout_margin="16dp"
         android:contentDescription="Iniciar Rota no Google Maps"
-        app:srcCompat="@android:drawable/ic_dialog_map"
-        app:backgroundTint="@color/tree_green_primary"
-        app:tint="@color/white" />
+        app:srcCompat="@android:drawable/ic_dialog_map" />
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>
