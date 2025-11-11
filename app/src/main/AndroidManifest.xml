@@ -39,9 +39,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity
-            android:name=".NavegacaoActivity"
-            android:theme="@style/Theme.TreeInspectorAndroid.NoActionBar" />
     </application>
 
 </manifest>

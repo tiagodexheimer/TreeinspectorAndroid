@@ -57,8 +57,6 @@ dependencies {
 	implementation(libs.osmdroid)
 	implementation(libs.gson)
 	implementation("com.google.android.gms:play-services-location:21.2.0")
-	// --- ADICIONE ESTAS LINHAS (Mapbox Navigation) ---
-	implementation("com.mapbox.navigation:android:2.20.0")
 
 	val room_version = "2.6.1"
 

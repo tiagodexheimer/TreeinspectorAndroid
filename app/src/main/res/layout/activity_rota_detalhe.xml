@@ -60,7 +60,6 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
                         android:textAppearance="?attr/textAppearanceBodyLarge"
-                        android:textColor="#000000"
                         tools:text="Rua das Flores, 123 - Centro" />
 
                     <TextView
@@ -71,7 +70,7 @@
                         android:ellipsize="end"
                         android:maxLines="3"
                         android:textAppearance="?attr/textAppearanceBodyMedium"
-                        android:textColor="#000000"
+                        android:textColor="@color/black"
                         tools:text="Descrição da demanda, poda de árvore grande na frente da casa, risco de queda..." />
 
                     <com.google.android.material.button.MaterialButton
@@ -109,12 +108,28 @@
     </androidx.core.widget.NestedScrollView>
 
     <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/fabRetomarAnterior"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="90dp"
+        android:contentDescription="Retomar Demanda Anterior"
+        android:visibility="gone"
+        app:srcCompat="@android:drawable/ic_menu_revert"
+        app:backgroundTint="@color/tree_green_dark"
+        app:tint="@color/white"
+        app:fabSize="normal" />
+
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/fabIniciarRota"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|end"
         android:layout_margin="16dp"
         android:contentDescription="Iniciar Rota no Google Maps"
-        app:srcCompat="@android:drawable/ic_dialog_map" />
+        app:srcCompat="@android:drawable/ic_dialog_map"
+        app:backgroundTint="@color/tree_green_primary"
+        app:tint="@color/white" />
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

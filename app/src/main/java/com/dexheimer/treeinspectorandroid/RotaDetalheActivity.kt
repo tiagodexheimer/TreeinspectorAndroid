@@ -46,10 +46,13 @@ class RotaDetalheActivity : AppCompatActivity() {
 	private var rotaCompleta: Rota? = null
 	private var proximaDemanda: Demanda? = null
 	private var totalParadasInicial: Int = 0
+	// NOVO: Pilha para as demandas concluídas (última a entrar, primeira a sair)
+	private val demandasConcluidas: MutableList<Demanda> = mutableListOf()
 
 	// --- Componentes de UI ---
 	private lateinit var toolbar: Toolbar
 	private lateinit var fabIniciarRota: FloatingActionButton
+	private lateinit var fabRetomarAnterior: FloatingActionButton // <-- NOVO COMPONENTE
 	private lateinit var cardProximaVistoria: View
 	private lateinit var tituloProximaParada: TextView
 	private lateinit var enderecoProximaParada: TextView
@@ -86,35 +89,27 @@ class RotaDetalheActivity : AppCompatActivity() {
 
 	/**
 	 * Launcher para a tela de Detalhe.
-	 * Ao concluir, também remove a demanda do banco de dados local.
+	 * Ao concluir, MOVE a demanda para a pilha de concluídas (e NÃO DELETA do DB).
 	 */
 	private val vistoriaLauncher = registerForActivityResult(
 		ActivityResultContracts.StartActivityForResult()
 	) { result ->
 		if (result.resultCode == Activity.RESULT_OK) {
-			Log.d("RotaDetalheActivity", "Vistoria da demanda #${proximaDemanda?.id} concluída.")
+			val demandaConcluida = proximaDemanda ?: return@registerForActivityResult
 
-			val demandaConcluida = proximaDemanda // Guarda a referência
+			Log.d("RotaDetalheActivity", "Vistoria da demanda #${demandaConcluida.id} concluída.")
 
-			// 1. Remove da lista em memória
+			// 1. Remove da lista em memória de pendentes
 			if (listaDemandas.isNotEmpty()) {
 				listaDemandas.removeAt(0)
 			}
 
-			// 2. Remove do banco de dados local (para persistência offline)
-			if (demandaConcluida != null) {
-				lifecycleScope.launch(Dispatchers.IO) {
-					try {
-						db.demandaDao().deleteDemanda(demandaConcluida)
-						Log.d("RotaDetalheActivity", "Demanda #${demandaConcluida.id} removida do cache local.")
-					} catch (e: Exception) {
-						Log.e("RotaDetalheActivity", "Erro ao remover demanda do cache", e)
-					}
-				}
-			}
+			// 2. Adiciona à pilha de concluídas (Mantida em memória e no cache do Room)
+			demandasConcluidas.add(0, demandaConcluida)
 
-			// 3. Atualiza a UI para mostrar a próxima demanda
+			// 3. Atualiza a UI para mostrar a próxima demanda e o botão Retomar
 			atualizarUI()
+			Toast.makeText(this, "Vistoria concluída. Use 'Retomar Anterior' se necessário.", Toast.LENGTH_LONG).show()
 		} else {
 			Log.d("RotaDetalheActivity", "Vistoria não finalizada (usuário voltou).")
 		}
@@ -135,6 +130,7 @@ class RotaDetalheActivity : AppCompatActivity() {
 		// --- 1. Inicializar Componentes de UI ---
 		toolbar = findViewById(R.id.toolbar)
 		fabIniciarRota = findViewById(R.id.fabIniciarRota)
+		fabRetomarAnterior = findViewById(R.id.fabRetomarAnterior) // <-- INICIALIZAÇÃO
 		cardProximaVistoria = findViewById(R.id.proximaVistoriaCard)
 		tituloProximaParada = findViewById(R.id.tituloProximaParada)
 		enderecoProximaParada = findViewById(R.id.enderecoProximaParada)
@@ -148,10 +144,12 @@ class RotaDetalheActivity : AppCompatActivity() {
 		// Esconde UI até os dados carregarem
 		cardProximaVistoria.visibility = View.GONE
 		fabIniciarRota.visibility = View.GONE
+		fabRetomarAnterior.visibility = View.GONE // <-- Esconde o novo botão
 
 		// --- 2. Configurar Ações dos Botões ---
 		fabIniciarRota.setOnClickListener { iniciarRotaGoogleMaps() }
 		btnIniciarVistoria.setOnClickListener { abrirDetalheDemanda() }
+		fabRetomarAnterior.setOnClickListener { retomarDemandaAnterior() } // <-- LÓGICA DO NOVO BOTÃO
 
 		// --- 3. Buscar os Dados (Offline-First) ---
 		rotaId = intent.getIntExtra("ROTA_ID", -1)
@@ -160,6 +158,26 @@ class RotaDetalheActivity : AppCompatActivity() {
 		} else {
 			Log.e("RotaDetalheActivity", "ID da Rota inválido.")
 			supportActionBar?.title = "Erro: Rota não encontrada"
+		}
+	}
+
+	/**
+	 * LÓGICA DE RETOMAR ANTERIOR:
+	 * Move a última demanda da pilha de 'concluídas' de volta para a lista de 'pendentes'.
+	 */
+	private fun retomarDemandaAnterior() {
+		if (demandasConcluidas.isNotEmpty()) {
+			val demandaAnterior = demandasConcluidas.removeAt(0) // Remove do topo (última concluída)
+
+			// 1. Reinsere na lista de pendentes (no topo)
+			listaDemandas.add(0, demandaAnterior)
+
+			// 2. Atualiza a UI para mostrar a demanda restaurada
+			atualizarUI()
+			Log.d("RotaDetalheActivity", "Demanda #${demandaAnterior.id} restaurada na lista de pendentes.")
+			Toast.makeText(this, "Demanda Anterior Restaurada: #${demandaAnterior.id}", Toast.LENGTH_SHORT).show()
+		} else {
+			Toast.makeText(this, "Nenhuma demanda concluída para retomar.", Toast.LENGTH_SHORT).show()
 		}
 	}
 
@@ -196,9 +214,6 @@ class RotaDetalheActivity : AppCompatActivity() {
 		}
 	}
 
-	/**
-	 * Busca os dados da REDE (Volley).
-	 */
 	private fun fetchRotaDetalhesNetwork(rotaId: Int) {
 		val queue = Volley.newRequestQueue(this)
 		val url = "$API_BASE_URL/rotas/$rotaId"
@@ -239,9 +254,6 @@ class RotaDetalheActivity : AppCompatActivity() {
 		queue.add(jsonObjectRequest)
 	}
 
-	/**
-	 * Lógica centralizada para preencher as variáveis e INICIAR a checagem de localização.
-	 */
 	private fun processarDadosCarregados(rota: Rota, demandas: List<Demanda>, devePerguntarOtimizacao: Boolean) {
 		rotaCompleta = rota
 		listaDemandas = demandas.toMutableList()
@@ -257,11 +269,6 @@ class RotaDetalheActivity : AppCompatActivity() {
 		}
 	}
 
-	// --- FUNÇÕES ADICIONADAS: Lógica de Localização e Otimização ---
-
-	/**
-	 * PASSO 1: Verifica se o app tem permissão.
-	 */
 	private fun checkLocationPermissionAndAsk() {
 		when {
 			ContextCompat.checkSelfPermission(
@@ -282,9 +289,6 @@ class RotaDetalheActivity : AppCompatActivity() {
 		}
 	}
 
-	/**
-	 * PASSO 2: Pega a localização do usuário (somente se a permissão foi dada).
-	 */
 	@SuppressLint("MissingPermission") // <-- Suprime o aviso (já checamos a permissão)
 	private fun getUsersCurrentLocationAndAsk() {
 		// Checagem de segurança (embora já tenhamos checado antes)
@@ -312,9 +316,6 @@ class RotaDetalheActivity : AppCompatActivity() {
 			}
 	}
 
-	/**
-	 * PASSO 3: Mostra o AlertDialog para o usuário.
-	 */
 	private fun showOptimizeDialog(userLocation: Location?) {
 		if (isFinishing || isDestroyed) { // Evita crash se a activity fechar
 			return
@@ -347,10 +348,6 @@ class RotaDetalheActivity : AppCompatActivity() {
 		builder.show()
 	}
 
-	/**
-	 * PASSO 4: Onde a mágica da otimização acontece.
-	 * ENVIA `demandaIds` E `userLocation` (opcional) PARA O BACKEND.
-	 */
 	private fun optimizeRouteFromLocation(userLocation: Location?) {
 		Log.d("RotaDetalheActivity", "Iniciando otimização (usando backend)...")
 		Toast.makeText(this, "Otimizando rota, aguarde...", Toast.LENGTH_SHORT).show()
@@ -388,7 +385,7 @@ class RotaDetalheActivity : AppCompatActivity() {
 				// 3. Receber Resposta
 				Log.d("RotaDetalheActivity", "Otimização recebida: $response")
 				try {
-					val optimizedDemandsJson = response.getJSONArray("optimizedDemands")
+					val optimizedDemandasJson = response.getJSONArray("optimizedDemandas")
 
 					// Ler o ponto de partida que o backend USOU (seja o do usuário ou a base)
 					val startPointJson = response.optJSONObject("startPoint")
@@ -405,8 +402,8 @@ class RotaDetalheActivity : AppCompatActivity() {
 					val gson = Gson()
 					val sortedDemandaList = mutableListOf<Demanda>()
 
-					for (i in 0 until optimizedDemandsJson.length()) {
-						val demandaObj = optimizedDemandsJson.getJSONObject(i).toString()
+					for (i in 0 until optimizedDemandasJson.length()) {
+						val demandaObj = optimizedDemandasJson.getJSONObject(i).toString()
 						// Usamos o Gson para converter o objeto JSON de volta para a classe Demanda
 						val demanda = gson.fromJson(demandaObj, Demanda::class.java)
 						sortedDemandaList.add(demanda)
@@ -440,8 +437,6 @@ class RotaDetalheActivity : AppCompatActivity() {
 		// Adiciona a requisição à fila do Volley
 		Volley.newRequestQueue(this).add(jsonObjectRequest)
 	}
-
-	// --- Funções do Banco de Dados (Cache) ---
 
 	private suspend fun carregarRotaDoCache(rotaId: Int): Rota? {
 		return withContext(Dispatchers.IO) {
@@ -494,13 +489,14 @@ class RotaDetalheActivity : AppCompatActivity() {
 	 * Atualiza a UI (Card, Mapa, Botões) com base no estado atual de 'listaDemandas'.
 	 */
 	private fun atualizarUI() {
+		// 1. Lógica de Rota Concluída
 		if (listaDemandas.isEmpty()) {
-			// Rota Concluída
 			tituloProximaParada.text = "Rota Concluída"
 			enderecoProximaParada.text = "Não há mais paradas nesta rota."
 			descricaoProximaParada.visibility = View.GONE
 			btnIniciarVistoria.visibility = View.GONE
 			fabIniciarRota.visibility = View.GONE
+			fabRetomarAnterior.visibility = View.GONE // <-- ESCONDE SE A ROTA TERMINOU
 			cardProximaVistoria.visibility = View.VISIBLE
 			mapView.overlays.clear()
 			mapView.invalidate()
@@ -511,8 +507,7 @@ class RotaDetalheActivity : AppCompatActivity() {
 		val paradasConcluidas = totalParadasInicial - listaDemandas.size
 		val numeroParadaAtual = paradasConcluidas + 1
 
-		// 1. Preenche o Card
-		// Se o número da parada for 0 ou negativo (após otimização), mostramos 1
+		// 2. Preenche o Card
 		val displayParadaAtual = if (numeroParadaAtual <= 0) 1 else numeroParadaAtual
 		tituloProximaParada.text = "Próxima Parada ($displayParadaAtual de $totalParadasInicial)"
 
@@ -523,20 +518,20 @@ class RotaDetalheActivity : AppCompatActivity() {
 		fabIniciarRota.visibility = View.VISIBLE
 		btnIniciarVistoria.visibility = View.VISIBLE
 
-		// 2. Preenche o Mapa
+		// NOVO: Exibe o botão "Retomar Anterior" se houver demandas na pilha de concluídas
+		fabRetomarAnterior.visibility = if (demandasConcluidas.isNotEmpty()) View.VISIBLE else View.GONE
+
+		// 3. Preenche o Mapa
 		val mapController = mapView.controller
 		mapView.overlays.clear()
 
 		// Adiciona um marcador para o PONTO DE PARTIDA (seja do usuário ou da base)
-		// 'localizacaoUsuario' agora guarda o ponto de partida que o backend usou
 		localizacaoUsuario?.let { loc ->
 			val userPoint = GeoPoint(loc.latitude, loc.longitude)
 			val userMarker = Marker(mapView)
 			userMarker.position = userPoint
 			userMarker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
 			userMarker.title = "Ponto de Partida"
-			// (Você pode querer um ícone diferente para o usuário/base)
-			// userMarker.icon = getDrawable(R.drawable.ic_user_location)
 			mapView.overlays.add(userMarker)
 		}
 
@@ -559,7 +554,6 @@ class RotaDetalheActivity : AppCompatActivity() {
 
 		// Centraliza o mapa
 		val pontoFoco = if (localizacaoUsuario != null) {
-			// Foca no ponto de partida (que agora é dinâmico)
 			GeoPoint(localizacaoUsuario!!.latitude, localizacaoUsuario!!.longitude)
 		} else if (proximaDemanda?.geom?.coordinates != null) {
 			GeoPoint(proximaDemanda!!.geom!!.coordinates[1], proximaDemanda!!.geom!!.coordinates[0])
