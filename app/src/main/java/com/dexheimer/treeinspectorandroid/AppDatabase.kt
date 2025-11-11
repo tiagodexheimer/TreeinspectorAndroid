@@ -6,7 +6,8 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 
-@Database(entities = [Rota::class, Demanda::class], version = 1, exportSchema = false)
+// 1. MUDE A VERSÃO DE 1 PARA 2 (ou qualquer número maior)
+@Database(entities = [Rota::class, Demanda::class], version = 2, exportSchema = false)
 @TypeConverters(GeomTypeConverter::class) // <-- Importante para salvar o 'Geom'
 abstract class AppDatabase : RoomDatabase() {
 
@@ -28,7 +29,9 @@ abstract class AppDatabase : RoomDatabase() {
 					AppDatabase::class.java,
 					"tree_inspector_db" // Nome do arquivo do banco de dados
 				)
-					// (Em um app real, adicione '.addMigrations(...)' aqui)
+					// 2. ADICIONE ESTA LINHA para evitar o crash de migração
+					// (Substitui o seu comentário sobre 'addMigrations')
+					.fallbackToDestructiveMigration()
 					.build()
 
 				INSTANCE = instance

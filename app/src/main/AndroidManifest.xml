@@ -6,10 +6,6 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
-    <meta-data
-        android:name="MAPBOX_ACCESS_TOKEN"
-        android:value="pk.eyJ1IjoiZmVuaXhwYWx3YXNoYSIsImEiOiJjbWhucjhld2cwM2psMnlvZW5scm5oc3hqIn0.bmDLm2Be7YZzgnjqPyydfA" />
-
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -30,6 +26,9 @@
             android:exported="false" />
         <activity
             android:name=".RoutesActivity"
+            android:exported="false" />
+        <activity
+            android:name=".DemandaListActivity"
             android:exported="false" />
         <activity
             android:name=".MainActivity"

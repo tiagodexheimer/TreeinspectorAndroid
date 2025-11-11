@@ -9,6 +9,8 @@ import android.location.Location
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
+import android.view.Menu // <-- ADICIONADO PARA O MENU
+import android.view.MenuItem // <-- ADICIONADO PARA O MENU
 import android.view.View
 import android.widget.Button
 import android.widget.TextView
@@ -42,22 +44,21 @@ class RotaDetalheActivity : AppCompatActivity() {
 	private val API_BASE_URL = "https://tree-inspector-v5.vercel.app/api"
 
 	// --- Variáveis de Estado ---
-	private var listaDemandas: MutableList<Demanda> = mutableListOf()
+	private var demandasPendentes: MutableList<Demanda> = mutableListOf()
+	private var demandasCarregadas: MutableList<Demanda> = mutableListOf()
 	private var rotaCompleta: Rota? = null
 	private var proximaDemanda: Demanda? = null
 	private var totalParadasInicial: Int = 0
-	// NOVO: Pilha para as demandas concluídas (última a entrar, primeira a sair)
-	private val demandasConcluidas: MutableList<Demanda> = mutableListOf()
 
 	// --- Componentes de UI ---
 	private lateinit var toolbar: Toolbar
 	private lateinit var fabIniciarRota: FloatingActionButton
-	private lateinit var fabRetomarAnterior: FloatingActionButton // <-- NOVO COMPONENTE
 	private lateinit var cardProximaVistoria: View
 	private lateinit var tituloProximaParada: TextView
 	private lateinit var enderecoProximaParada: TextView
 	private lateinit var descricaoProximaParada: TextView
 	private lateinit var btnIniciarVistoria: Button
+	private lateinit var btnVerTodasDemandas: Button
 	private lateinit var mapView: MapView
 
 	// --- Banco de Dados ---
@@ -68,52 +69,51 @@ class RotaDetalheActivity : AppCompatActivity() {
 	private lateinit var fusedLocationClient: FusedLocationProviderClient
 	private var localizacaoUsuario: Location? = null
 
-	/**
-	 * Launcher para pedir permissão de localização
-	 */
 	private val locationPermissionRequest = registerForActivityResult(
 		ActivityResultContracts.RequestPermission()
 	) { isGranted: Boolean ->
 		if (isGranted) {
-			// Permissão concedida, tenta pegar a localização e perguntar
-			Log.d("RotaDetalheActivity", "Permissão de localização CONCEDIDA.")
 			getUsersCurrentLocationAndAsk()
 		} else {
-			// Permissão negada, o app funciona sem otimizar (usará a base)
-			Log.d("RotaDetalheActivity", "Permissão de localização NEGADA.")
 			Toast.makeText(this, "Permissão de localização negada.", Toast.LENGTH_SHORT).show()
-			// Pergunta mesmo assim, mas sem a localização
 			showOptimizeDialog(null)
 		}
 	}
 
 	/**
-	 * Launcher para a tela de Detalhe.
-	 * Ao concluir, MOVE a demanda para a pilha de concluídas (e NÃO DELETA do DB).
+	 * Launcher para o CARD DA PRÓXIMA VISTORIA.
 	 */
 	private val vistoriaLauncher = registerForActivityResult(
 		ActivityResultContracts.StartActivityForResult()
 	) { result ->
 		if (result.resultCode == Activity.RESULT_OK) {
-			val demandaConcluida = proximaDemanda ?: return@registerForActivityResult
+			val novoStatus = result.data?.getStringExtra("NOVO_STATUS") ?: return@registerForActivityResult
+			val demandaId = result.data?.getIntExtra("DEMANDA_ID", -1) ?: -1
 
-			Log.d("RotaDetalheActivity", "Vistoria da demanda #${demandaConcluida.id} concluída.")
-
-			// 1. Remove da lista em memória de pendentes
-			if (listaDemandas.isNotEmpty()) {
-				listaDemandas.removeAt(0)
+			if (demandaId != -1 && demandaId == proximaDemanda?.id) {
+				Log.d("RotaDetalheActivity", "Atualizando status da PRÓXIMA demanda")
+				atualizarStatusDemanda(demandaId, novoStatus)
 			}
-
-			// 2. Adiciona à pilha de concluídas (Mantida em memória e no cache do Room)
-			demandasConcluidas.add(0, demandaConcluida)
-
-			// 3. Atualiza a UI para mostrar a próxima demanda e o botão Retomar
-			atualizarUI()
-			Toast.makeText(this, "Vistoria concluída. Use 'Retomar Anterior' se necessário.", Toast.LENGTH_LONG).show()
-		} else {
-			Log.d("RotaDetalheActivity", "Vistoria não finalizada (usuário voltou).")
 		}
 	}
+
+	/**
+	 * Launcher para a TELA DE LISTA.
+	 * Quando ela fecha, recarregamos TUDO, pois qualquer item pode ter mudado.
+	 */
+	private val demandaListLauncher = registerForActivityResult(
+		ActivityResultContracts.StartActivityForResult()
+	) { result ->
+		if (result.resultCode == Activity.RESULT_OK) {
+			Log.d("RotaDetalheActivity", "Retornando da lista de demandas, recarregando...")
+			// Recarrega tudo do DB para garantir que os status estão corretos
+			lifecycleScope.launch {
+				val demandasLocais = carregarDemandasDoCache(rotaId)
+				processarDadosCarregados(rotaCompleta!!, demandasLocais, false) // 'false' para não otimizar auto
+			}
+		}
+	}
+
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
@@ -121,37 +121,31 @@ class RotaDetalheActivity : AppCompatActivity() {
 		Configuration.getInstance().load(applicationContext, getSharedPreferences("osmdroid", MODE_PRIVATE))
 		setContentView(R.layout.activity_rota_detalhe)
 
-		// Inicializa o BD
 		db = AppDatabase.getInstance(applicationContext)
-
-		// Inicializa o FusedLocationClient
 		fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
 
 		// --- 1. Inicializar Componentes de UI ---
 		toolbar = findViewById(R.id.toolbar)
 		fabIniciarRota = findViewById(R.id.fabIniciarRota)
-		fabRetomarAnterior = findViewById(R.id.fabRetomarAnterior) // <-- INICIALIZAÇÃO
 		cardProximaVistoria = findViewById(R.id.proximaVistoriaCard)
 		tituloProximaParada = findViewById(R.id.tituloProximaParada)
 		enderecoProximaParada = findViewById(R.id.enderecoProximaParada)
 		descricaoProximaParada = findViewById(R.id.descricaoProximaParada)
 		btnIniciarVistoria = findViewById(R.id.btnIniciarVistoria)
+		btnVerTodasDemandas = findViewById(R.id.btnVerTodasDemandas)
 		mapView = findViewById(R.id.mapView)
 
-		// Configurações de Toolbar e Mapa
 		setupToolbarEMapa()
 
-		// Esconde UI até os dados carregarem
 		cardProximaVistoria.visibility = View.GONE
 		fabIniciarRota.visibility = View.GONE
-		fabRetomarAnterior.visibility = View.GONE // <-- Esconde o novo botão
 
 		// --- 2. Configurar Ações dos Botões ---
 		fabIniciarRota.setOnClickListener { iniciarRotaGoogleMaps() }
-		btnIniciarVistoria.setOnClickListener { abrirDetalheDemanda() }
-		fabRetomarAnterior.setOnClickListener { retomarDemandaAnterior() } // <-- LÓGICA DO NOVO BOTÃO
+		btnIniciarVistoria.setOnClickListener { abrirDetalheProximaDemanda() }
+		btnVerTodasDemandas.setOnClickListener { abrirListaDeDemandas() }
 
-		// --- 3. Buscar os Dados (Offline-First) ---
+		// --- 3. Buscar os Dados ---
 		rotaId = intent.getIntExtra("ROTA_ID", -1)
 		if (rotaId != -1) {
 			carregarDadosIniciais(rotaId)
@@ -161,55 +155,54 @@ class RotaDetalheActivity : AppCompatActivity() {
 		}
 	}
 
-	/**
-	 * LÓGICA DE RETOMAR ANTERIOR:
-	 * Move a última demanda da pilha de 'concluídas' de volta para a lista de 'pendentes'.
-	 */
-	private fun retomarDemandaAnterior() {
-		if (demandasConcluidas.isNotEmpty()) {
-			val demandaAnterior = demandasConcluidas.removeAt(0) // Remove do topo (última concluída)
+	// --- FUNÇÕES DE LÓGICA DE STATUS ---
 
-			// 1. Reinsere na lista de pendentes (no topo)
-			listaDemandas.add(0, demandaAnterior)
-
-			// 2. Atualiza a UI para mostrar a demanda restaurada
-			atualizarUI()
-			Log.d("RotaDetalheActivity", "Demanda #${demandaAnterior.id} restaurada na lista de pendentes.")
-			Toast.makeText(this, "Demanda Anterior Restaurada: #${demandaAnterior.id}", Toast.LENGTH_SHORT).show()
-		} else {
-			Toast.makeText(this, "Nenhuma demanda concluída para retomar.", Toast.LENGTH_SHORT).show()
+	private fun atualizarStatusDemanda(demandaId: Int, novoStatus: String) {
+		lifecycleScope.launch {
+			withContext(Dispatchers.IO) {
+				db.demandaDao().updateStatus(demandaId, novoStatus)
+			}
+			demandasCarregadas.find { it.id == demandaId }?.status_vistoria = novoStatus
+			filtrarDemandasPendentes()
 		}
 	}
+
+	private fun filtrarDemandasPendentes() {
+		demandasPendentes = demandasCarregadas.filter {
+			it.status_vistoria.equals("pendente", ignoreCase = true)
+		}.toMutableList()
+
+		demandasPendentes.sortBy { demanda ->
+			demandasCarregadas.indexOfFirst { it.id == demanda.id }
+		}
+
+		totalParadasInicial = demandasPendentes.size
+		atualizarUI()
+	}
+
+	// --- LÓGICA DE CARREGAMENTO DE DADOS ---
 
 	private fun setupToolbarEMapa() {
 		setSupportActionBar(toolbar)
 		supportActionBar?.title = getString(R.string.titulo_activity_rota_detalhe)
 		supportActionBar?.setDisplayHomeAsUpEnabled(true)
-
 		mapView.setTileSource(TileSourceFactory.MAPNIK)
 		mapView.setBuiltInZoomControls(true)
 		mapView.setMultiTouchControls(true)
 	}
 
-	/**
-	 * Ponto de entrada da lógica de dados (Offline-First).
-	 */
 	private fun carregarDadosIniciais(rotaId: Int) {
 		lifecycleScope.launch {
-			// 1. Tenta carregar do cache
 			val rotaLocal = carregarRotaDoCache(rotaId)
 			val demandasLocais = carregarDemandasDoCache(rotaId)
 
 			if (rotaLocal != null && demandasLocais.isNotEmpty()) {
 				Log.d("RotaDetalheActivity", "Dados carregados do cache.")
-				// 2. Cache HIT: Exibe os dados locais imediatamente
-				processarDadosCarregados(rotaLocal, demandasLocais, false) // Não otimiza no carreg. do cache
+				processarDadosCarregados(rotaLocal, demandasLocais, false)
 				supportActionBar?.title = "${rotaCompleta?.nome ?: "Detalhes"} (Offline)"
 			} else {
 				Log.d("RotaDetalheActivity", "Cache vazio ou incompleto.")
 			}
-
-			// 3. Sempre tenta buscar da rede (para atualizar ou buscar pela 1ª vez)
 			fetchRotaDetalhesNetwork(rotaId)
 		}
 	}
@@ -217,7 +210,6 @@ class RotaDetalheActivity : AppCompatActivity() {
 	private fun fetchRotaDetalhesNetwork(rotaId: Int) {
 		val queue = Volley.newRequestQueue(this)
 		val url = "$API_BASE_URL/rotas/$rotaId"
-
 		Log.d("RotaDetalheActivity", "Buscando dados da rede: $url")
 
 		val jsonObjectRequest = JsonObjectRequest(
@@ -228,24 +220,38 @@ class RotaDetalheActivity : AppCompatActivity() {
 					val gson = Gson()
 					val resposta = gson.fromJson(response.toString(), RotaDetalheResponse::class.java)
 
-					// 1. Atualiza a UI com os dados frescos da rede
-					// E inicia a checagem de otimização
-					processarDadosCarregados(resposta.rota, resposta.demandas, true)
+					lifecycleScope.launch {
+						val demandasDaApi = resposta.demandas.toMutableList()
+						val demandasLocais = withContext(Dispatchers.IO) {
+							db.demandaDao().getDemandasDaRota(rotaId)
+						}
+						val mapaStatusLocal = demandasLocais.associateBy({ it.id }, { it.status_vistoria })
 
-					// 2. Salva os dados frescos no cache em segundo plano
-					lifecycleScope.launch(Dispatchers.IO) {
-						salvarDadosNoCache(resposta.rota, resposta.demandas, rotaId)
+						val demandasMescladas = demandasDaApi.map { demandaApi ->
+							val statusSalvo = mapaStatusLocal[demandaApi.id]
+							if (statusSalvo != null) {
+								demandaApi.status_vistoria = statusSalvo
+							} else {
+								demandaApi.status_vistoria = "pendente"
+							}
+							demandaApi
+						}
+
+						// DESLIGA O POP-UP AUTOMÁTICO
+						val devePerguntarOtimizacao = false
+						processarDadosCarregados(resposta.rota, demandasMescladas, devePerguntarOtimizacao)
+
+						withContext(Dispatchers.IO) {
+							salvarDadosNoCache(resposta.rota, demandasMescladas, rotaId)
+						}
 					}
-
 				} catch (e: Exception) {
 					Log.e("RotaDetalheActivity", "Erro ao processar JSON: ${e.message}", e)
 				}
 			},
 			{ error ->
 				Log.w("RotaDetalheActivity", "Erro de Rede (Volley): ${error.message}", error)
-				// Se chegamos aqui, ou o cache já foi carregado ou está vazio.
-				// Se a lista de demandas ainda estiver vazia, significa que falhamos em tudo.
-				if (listaDemandas.isEmpty()) {
+				if (demandasCarregadas.isEmpty()) {
 					supportActionBar?.title = "Erro: Sem conexão"
 					Toast.makeText(this, "Falha na rede e sem dados locais.", Toast.LENGTH_LONG).show()
 				}
@@ -256,18 +262,19 @@ class RotaDetalheActivity : AppCompatActivity() {
 
 	private fun processarDadosCarregados(rota: Rota, demandas: List<Demanda>, devePerguntarOtimizacao: Boolean) {
 		rotaCompleta = rota
-		listaDemandas = demandas.toMutableList()
-		totalParadasInicial = listaDemandas.size
+		demandasCarregadas = demandas.toMutableList()
+
+		filtrarDemandasPendentes()
+
 		supportActionBar?.title = rotaCompleta?.nome ?: "Detalhes da Rota"
 
-		atualizarUI() // Atualiza a UI com a rota original
-
-		// --- MODIFICADO: Inicia o fluxo de otimização ---
-		// Só pergunta se a rota ainda tiver paradas e se for o 'load' da rede
-		if (listaDemandas.isNotEmpty() && devePerguntarOtimizacao) {
+		// Otimização automática (agora desativada)
+		if (demandasPendentes.isNotEmpty() && devePerguntarOtimizacao) {
 			checkLocationPermissionAndAsk()
 		}
 	}
+
+	// --- LÓGICA DE OTIMIZAÇÃO (AGORA MANUAL) ---
 
 	private fun checkLocationPermissionAndAsk() {
 		when {
@@ -275,23 +282,19 @@ class RotaDetalheActivity : AppCompatActivity() {
 				this,
 				Manifest.permission.ACCESS_FINE_LOCATION
 			) == PackageManager.PERMISSION_GRANTED -> {
-				// Permissão já concedida. Pega a localização e pergunta.
 				getUsersCurrentLocationAndAsk()
 			}
 			shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_FINE_LOCATION) -> {
-				// (Opcional) Mostra um dialog explicando por que a permissão é necessária
 				locationPermissionRequest.launch(Manifest.permission.ACCESS_FINE_LOCATION)
 			}
 			else -> {
-				// Pede a permissão pela primeira vez
 				locationPermissionRequest.launch(Manifest.permission.ACCESS_FINE_LOCATION)
 			}
 		}
 	}
 
-	@SuppressLint("MissingPermission") // <-- Suprime o aviso (já checamos a permissão)
+	@SuppressLint("MissingPermission")
 	private fun getUsersCurrentLocationAndAsk() {
-		// Checagem de segurança (embora já tenhamos checado antes)
 		if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
 			return
 		}
@@ -299,49 +302,37 @@ class RotaDetalheActivity : AppCompatActivity() {
 		fusedLocationClient.lastLocation
 			.addOnSuccessListener { location: Location? ->
 				if (location != null) {
-					Log.d("RotaDetalheActivity", "Localização encontrada: ${location.latitude}, ${location.longitude}")
 					this.localizacaoUsuario = location
-					// PASSO 3: Mostra o Dialog de pergunta
 					showOptimizeDialog(location)
 				} else {
-					Log.w("RotaDetalheActivity", "Não foi possível obter a localização (pode estar nula).")
-					// Chama o dialog mesmo com localização nula
 					showOptimizeDialog(null)
 				}
 			}
 			.addOnFailureListener {
-				Log.e("RotaDetalheActivity", "Falha ao obter localização", it)
-				// Chama o dialog mesmo com localização nula
 				showOptimizeDialog(null)
 			}
 	}
 
 	private fun showOptimizeDialog(userLocation: Location?) {
-		if (isFinishing || isDestroyed) { // Evita crash se a activity fechar
+		if (isFinishing || isDestroyed) {
 			return
 		}
 
-		// Mensagem muda se o GPS falhou
 		val message = if (userLocation != null) {
-			"Deseja otimizar a rota a partir da sua localização atual?"
+			"Deseja otimizar as ${demandasPendentes.size} paradas pendentes a partir da sua localização atual?"
 		} else {
-			"Não foi possível obter sua localização. Deseja otimizar a rota a partir da base?"
+			"Não foi possível obter sua localização. Deseja otimizar as ${demandasPendentes.size} paradas pendentes a partir da base?"
 		}
 
 		val builder = AlertDialog.Builder(this)
 		builder.setTitle("Otimizar Rota?")
 		builder.setMessage(message)
 
-		// Botão "Otimizar Rota"
 		builder.setPositiveButton("Otimizar Rota") { dialog, which ->
-			Log.d("RotaDetalheActivity", "Usuário escolheu OTIMIZAR.")
-			// PASSO 4: Chama a função de otimização (passando a localização ou null)
 			optimizeRouteFromLocation(userLocation)
 		}
 
-		// Botão "Manter Atual"
 		builder.setNegativeButton("Manter Atual") { dialog, which ->
-			Log.d("RotaDetalheActivity", "Usuário escolheu MANTER a rota.")
 			dialog.dismiss()
 		}
 
@@ -349,94 +340,81 @@ class RotaDetalheActivity : AppCompatActivity() {
 	}
 
 	private fun optimizeRouteFromLocation(userLocation: Location?) {
-		Log.d("RotaDetalheActivity", "Iniciando otimização (usando backend)...")
-		Toast.makeText(this, "Otimizando rota, aguarde...", Toast.LENGTH_SHORT).show()
+		Log.d("RotaDetalheActivity", "Iniciando otimização manual...")
 
-		// 1. Coletar IDs das Demandas
-		val demandaIds = listaDemandas.map { it.id }
+		val demandaIds = demandasPendentes.map { it.id }
 
-		// Se não houver demandas, não faz nada
 		if (demandaIds.isEmpty()) {
-			Log.w("RotaDetalheActivity", "Nenhuma demanda para otimizar.")
+			Toast.makeText(this, "Nenhuma demanda pendente para otimizar.", Toast.LENGTH_SHORT).show()
 			return
 		}
 
-		// 2. Chamar a API (com Volley)
+		Toast.makeText(this, "Otimizando ${demandaIds.size} paradas...", Toast.LENGTH_SHORT).show()
 		val url = "$API_BASE_URL/rotas/optimize"
-
-		// Monta o corpo da requisição
 		val requestBody = JSONObject()
 		requestBody.put("demandaIds", JSONArray(demandaIds))
 
-		// Adiciona a localização do usuário APENAS SE ELA EXISTIR
 		if (userLocation != null) {
 			val locationJson = JSONObject()
 			locationJson.put("latitude", userLocation.latitude)
 			locationJson.put("longitude", userLocation.longitude)
 			requestBody.put("userLocation", locationJson)
-			Log.d("RotaDetalheActivity", "Enviando localização do usuário para o backend.")
-		} else {
-			Log.d("RotaDetalheActivity", "Sem localização do usuário. Backend usará o padrão.")
 		}
 
 		val jsonObjectRequest = JsonObjectRequest(
 			Request.Method.POST, url, requestBody,
 			{ response ->
-				// 3. Receber Resposta
 				Log.d("RotaDetalheActivity", "Otimização recebida: $response")
 				try {
-					val optimizedDemandasJson = response.getJSONArray("optimizedDemandas")
+					val optimizedDemandasJson = response.getJSONArray("optimizedDemands")
 
-					// Ler o ponto de partida que o backend USOU (seja o do usuário ou a base)
 					val startPointJson = response.optJSONObject("startPoint")
 					if (startPointJson != null) {
-						// Atualiza 'localizacaoUsuario' para centralizar o mapa corretamente
-						val startLocation = Location("backend").apply { // O provedor "backend" é apenas um nome
+						val startLocation = Location("backend").apply {
 							latitude = startPointJson.getDouble("lat")
 							longitude = startPointJson.getDouble("lng")
 						}
-						this.localizacaoUsuario = startLocation // Atualiza para o foco do mapa
+						this.localizacaoUsuario = startLocation
 					}
 
-					// 4. Remapear a Rota
 					val gson = Gson()
 					val sortedDemandaList = mutableListOf<Demanda>()
 
 					for (i in 0 until optimizedDemandasJson.length()) {
 						val demandaObj = optimizedDemandasJson.getJSONObject(i).toString()
-						// Usamos o Gson para converter o objeto JSON de volta para a classe Demanda
 						val demanda = gson.fromJson(demandaObj, Demanda::class.java)
+						demanda.status_vistoria = "pendente"
 						sortedDemandaList.add(demanda)
 					}
 
-					// 5. Atualizar a UI
-					this.listaDemandas = sortedDemandaList
-					// Reinicia o contador de paradas
-					this.totalParadasInicial = this.listaDemandas.size
-
-					atualizarUI() // Redesenha o mapa e o card com a nova rota
-					Toast.makeText(this, "Rota otimizada!", Toast.LENGTH_SHORT).show()
-
-					// Opcional: Atualizar o cache do banco com a nova ordem
-					lifecycleScope.launch(Dispatchers.IO) {
-						// Passamos a rotaCompleta (que não mudou) e a nova lista de demandas
-						salvarDadosNoCache(this@RotaDetalheActivity.rotaCompleta!!, sortedDemandaList, this@RotaDetalheActivity.rotaId)
+					val demandasConcluidas = demandasCarregadas.filter {
+						!it.status_vistoria.equals("pendente", ignoreCase = true)
 					}
 
+					demandasCarregadas = (sortedDemandaList + demandasConcluidas).toMutableList()
+					demandasPendentes = sortedDemandaList.toMutableList()
+					totalParadasInicial = demandasPendentes.size
+
+					atualizarUI()
+					Toast.makeText(this, "Rota otimizada!", Toast.LENGTH_SHORT).show()
+
+					lifecycleScope.launch(Dispatchers.IO) {
+						salvarDadosNoCache(this@RotaDetalheActivity.rotaCompleta!!, demandasCarregadas, this@RotaDetalheActivity.rotaId)
+					}
 				} catch (e: Exception) {
 					Log.e("RotaDetalheActivity", "Erro ao processar JSON da otimização", e)
 					Toast.makeText(this, "Falha ao ler otimização.", Toast.LENGTH_SHORT).show()
 				}
 			},
 			{ error ->
-				val statusCode = error.networkResponse?.statusCode
-				Log.e("RotaDetalheActivity", "Erro de Rede (Volley) ao otimizar. Status: $statusCode", error)
+				Log.e("RotaDetalheActivity", "Erro de Rede (Volley) ao otimizar.", error)
 				Toast.makeText(this, "Falha de rede ao otimizar.", Toast.LENGTH_SHORT).show()
 			}
 		)
-		// Adiciona a requisição à fila do Volley
 		Volley.newRequestQueue(this).add(jsonObjectRequest)
 	}
+
+	// --- LÓGICA DO BANCO DE DADOS ---
 
 	private suspend fun carregarRotaDoCache(rotaId: Int): Rota? {
 		return withContext(Dispatchers.IO) {
@@ -463,14 +441,11 @@ class RotaDetalheActivity : AppCompatActivity() {
 	private suspend fun salvarDadosNoCache(rota: Rota, demandas: List<Demanda>, rotaId: Int) {
 		withContext(Dispatchers.IO) {
 			try {
-				Log.d("RotaDetalheActivity", "Salvando ${demandas.size} demandas no cache para rota $rotaId...")
-
+				Log.d("RotaDetalheActivity", "Salvando ${demandas.size} demandas (TODAS) no cache para rota $rotaId...")
 				db.rotaDao().insertRota(rota)
-
-				db.demandaDao().clearDemandasDaRota(rotaId) // Limpa dados antigos
-				demandas.forEach { it.rotaId = rotaId } // Associa as demandas à rota
-				db.demandaDao().insertAll(demandas) // Insere dados novos
-
+				db.demandaDao().clearDemandasDaRota(rotaId)
+				demandas.forEach { it.rotaId = rotaId }
+				db.demandaDao().insertAll(demandas)
 				Log.d("RotaDetalheActivity", "Cache salvo com sucesso.")
 			} catch (e: Exception) {
 				Log.e("RotaDetalheActivity", "Erro ao salvar dados no cache", e)
@@ -478,7 +453,31 @@ class RotaDetalheActivity : AppCompatActivity() {
 		}
 	}
 
-	// --- Lógica da UI (Funções restantes) ---
+	// --- LÓGICA DA UI (AÇÕES E CICLO DE VIDA) ---
+
+	/**
+	 * ADICIONADO: Cria o menu de 3 pontinhos na toolbar
+	 */
+	override fun onCreateOptionsMenu(menu: Menu?): Boolean {
+		menuInflater.inflate(R.menu.rota_detalhe_menu, menu)
+		return true
+	}
+
+	/**
+	 * ADICIONADO: Lida com o clique no item de menu (Otimizar)
+	 */
+	override fun onOptionsItemSelected(item: MenuItem): Boolean {
+		return when (item.itemId) {
+			R.id.action_optimize -> {
+				// O usuário clicou em "Otimizar Rota"
+				Log.d("RotaDetalheActivity", "Otimização manual acionada.")
+				// Inicia o fluxo de verificação de permissão
+				checkLocationPermissionAndAsk()
+				true
+			}
+			else -> super.onOptionsItemSelected(item)
+		}
+	}
 
 	override fun onSupportNavigateUp(): Boolean {
 		onBackPressedDispatcher.onBackPressed()
@@ -486,46 +485,40 @@ class RotaDetalheActivity : AppCompatActivity() {
 	}
 
 	/**
-	 * Atualiza a UI (Card, Mapa, Botões) com base no estado atual de 'listaDemandas'.
+	 * Atualiza a UI (Card, Mapa, Botões) com base no estado atual de 'demandasPendentes'.
 	 */
 	private fun atualizarUI() {
-		// 1. Lógica de Rota Concluída
-		if (listaDemandas.isEmpty()) {
+		// 1. Lógica de Rota Concluída (baseado na lista de PENDENTES)
+		if (demandasPendentes.isEmpty()) {
+			// Rota Concluída
 			tituloProximaParada.text = "Rota Concluída"
-			enderecoProximaParada.text = "Não há mais paradas nesta rota."
+			enderecoProximaParada.text = "Não há mais paradas pendentes nesta rota."
 			descricaoProximaParada.visibility = View.GONE
 			btnIniciarVistoria.visibility = View.GONE
 			fabIniciarRota.visibility = View.GONE
-			fabRetomarAnterior.visibility = View.GONE // <-- ESCONDE SE A ROTA TERMINOU
 			cardProximaVistoria.visibility = View.VISIBLE
-			mapView.overlays.clear()
-			mapView.invalidate()
-			return
+
+		} else {
+			// Ainda há paradas pendentes
+			proximaDemanda = demandasPendentes[0]
+
+			val numeroParadaAtual = 1
+			tituloProximaParada.text = "Próxima Parada ($numeroParadaAtual de $totalParadasInicial)"
+
+			// Preenche o Card
+			enderecoProximaParada.text = "${proximaDemanda?.logradouro ?: "End."} ${proximaDemanda?.numero ?: ""} - ${proximaDemanda?.bairro ?: ""}"
+			descricaoProximaParada.text = proximaDemanda?.descricao ?: "Sem descrição."
+			descricaoProximaParada.visibility = View.VISIBLE
+
+			cardProximaVistoria.visibility = View.VISIBLE
+			fabIniciarRota.visibility = View.VISIBLE
+			btnIniciarVistoria.visibility = View.VISIBLE
 		}
 
-		proximaDemanda = listaDemandas[0]
-		val paradasConcluidas = totalParadasInicial - listaDemandas.size
-		val numeroParadaAtual = paradasConcluidas + 1
-
-		// 2. Preenche o Card
-		val displayParadaAtual = if (numeroParadaAtual <= 0) 1 else numeroParadaAtual
-		tituloProximaParada.text = "Próxima Parada ($displayParadaAtual de $totalParadasInicial)"
-
-		enderecoProximaParada.text = "${proximaDemanda?.logradouro ?: "End."} ${proximaDemanda?.numero ?: ""} - ${proximaDemanda?.bairro ?: ""}"
-		descricaoProximaParada.text = proximaDemanda?.descricao ?: "Sem descrição."
-
-		cardProximaVistoria.visibility = View.VISIBLE
-		fabIniciarRota.visibility = View.VISIBLE
-		btnIniciarVistoria.visibility = View.VISIBLE
-
-		// NOVO: Exibe o botão "Retomar Anterior" se houver demandas na pilha de concluídas
-		fabRetomarAnterior.visibility = if (demandasConcluidas.isNotEmpty()) View.VISIBLE else View.GONE
-
-		// 3. Preenche o Mapa
+		// 3. Preenche o Mapa (mostra apenas PENDENTES)
 		val mapController = mapView.controller
 		mapView.overlays.clear()
 
-		// Adiciona um marcador para o PONTO DE PARTIDA (seja do usuário ou da base)
 		localizacaoUsuario?.let { loc ->
 			val userPoint = GeoPoint(loc.latitude, loc.longitude)
 			val userMarker = Marker(mapView)
@@ -535,30 +528,29 @@ class RotaDetalheActivity : AppCompatActivity() {
 			mapView.overlays.add(userMarker)
 		}
 
-		// Adiciona marcadores para as demandas
-		for ((index, demanda) in listaDemandas.withIndex()) {
+		// Adiciona marcadores para as demandas PENDENTES
+		for ((index, demanda) in demandasPendentes.withIndex()) {
 			val coords = demanda.geom?.coordinates
 			if (coords != null && coords.size == 2) {
-				val point = GeoPoint(coords[1], coords[0]) // Lat, Lng
+				val point = GeoPoint(coords[1], coords[0])
 				val marker = Marker(mapView)
 				marker.position = point
 				marker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-
 				val displayIndex = index + 1
 				marker.title = "Parada $displayIndex: ${demanda.logradouro}"
-
 				marker.icon = getDrawable(if (index == 0) R.drawable.ic_marker_green else R.drawable.ic_marker_blue)
 				mapView.overlays.add(marker)
 			}
 		}
 
 		// Centraliza o mapa
-		val pontoFoco = if (localizacaoUsuario != null) {
-			GeoPoint(localizacaoUsuario!!.latitude, localizacaoUsuario!!.longitude)
+		val pontoFoco: GeoPoint
+		if (localizacaoUsuario != null) {
+			pontoFoco = GeoPoint(localizacaoUsuario!!.latitude, localizacaoUsuario!!.longitude)
 		} else if (proximaDemanda?.geom?.coordinates != null) {
-			GeoPoint(proximaDemanda!!.geom!!.coordinates[1], proximaDemanda!!.geom!!.coordinates[0])
+			pontoFoco = GeoPoint(proximaDemanda!!.geom!!.coordinates[1], proximaDemanda!!.geom!!.coordinates[0])
 		} else {
-			GeoPoint(-29.8608, -51.1789) // Fallback
+			pontoFoco = GeoPoint(-29.8608, -51.1789) // Fallback
 		}
 
 		mapController.setZoom(15.0)
@@ -567,7 +559,10 @@ class RotaDetalheActivity : AppCompatActivity() {
 	}
 
 	private fun iniciarRotaGoogleMaps() {
-		if (proximaDemanda == null) return
+		if (proximaDemanda == null) {
+			Toast.makeText(this, "Nenhuma demanda pendente para navegar.", Toast.LENGTH_SHORT).show()
+			return
+		}
 		val coords = proximaDemanda?.geom?.coordinates
 		if (coords != null && coords.size == 2) {
 			val gmmIntentUri = Uri.parse("google.navigation:q=${coords[1]},${coords[0]}")
@@ -583,12 +578,25 @@ class RotaDetalheActivity : AppCompatActivity() {
 		}
 	}
 
-	private fun abrirDetalheDemanda() {
+	/**
+	 * Abre a tela de detalhe para a PRÓXIMA demanda pendente.
+	 */
+	private fun abrirDetalheProximaDemanda() {
 		if (proximaDemanda == null) return
 		val intent = Intent(this, DemandaDetalheActivity::class.java).apply {
 			putExtra("DEMANDA_EXTRA", proximaDemanda)
 		}
 		vistoriaLauncher.launch(intent)
+	}
+
+	/**
+	 * Abre a nova tela de lista
+	 */
+	private fun abrirListaDeDemandas() {
+		val intent = Intent(this, DemandaListActivity::class.java).apply {
+			putExtra("ROTA_ID", rotaId)
+		}
+		demandaListLauncher.launch(intent)
 	}
 
 	// --- Ciclo de Vida do Mapa ---

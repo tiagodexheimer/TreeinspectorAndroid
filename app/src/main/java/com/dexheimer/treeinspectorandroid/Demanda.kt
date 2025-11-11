@@ -74,8 +74,12 @@ data class Demanda(
 	 * mas é usado para o banco de dados Room.
 	 * Ele é definido manualmente na RotaDetalheActivity antes de salvar no banco.
 	 */
+	@ColumnInfo(name = "status_vistoria", defaultValue = "pendente")
+	var status_vistoria: String = "pendente",
+
 	@ColumnInfo(name = "rota_id", index = true) // <-- Coluna para o ID da Rota
 	var rotaId: Int = 0
+
 
 ) : Serializable
 

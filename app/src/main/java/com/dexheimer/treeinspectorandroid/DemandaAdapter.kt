@@ -1,5 +1,6 @@
 package com.dexheimer.treeinspectorandroid
 
+import android.graphics.Color
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -9,16 +10,15 @@ import androidx.recyclerview.widget.RecyclerView
 
 class DemandaAdapter(
 	private var demandas: List<Demanda>,
-	// Esta função será chamada quando o botão "Iniciar Vistoria" for clicado
 	private val onVistoriaClick: (Demanda) -> Unit
 ) : RecyclerView.Adapter<DemandaAdapter.DemandaViewHolder>() {
 
-	// Mapeia as Views do item_demanda.xml
 	class DemandaViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
 		val ordemTextView: TextView = itemView.findViewById(R.id.demandaOrdemTextView)
 		val enderecoTextView: TextView = itemView.findViewById(R.id.demandaEnderecoTextView)
 		val tipoTextView: TextView = itemView.findViewById(R.id.demandaTipoTextView)
 		val vistoriaButton: Button = itemView.findViewById(R.id.btnIniciarVistoria)
+		val statusTextView: TextView = itemView.findViewById(R.id.demandaStatusTextView) // <-- ADICIONADO
 	}
 
 	override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): DemandaViewHolder {
@@ -36,8 +36,19 @@ class DemandaAdapter(
 		holder.enderecoTextView.text = "${demanda.logradouro ?: "Endereço"} ${demanda.numero ?: ""} - ${demanda.bairro ?: ""}"
 		holder.tipoTextView.text = "Tipo: ${demanda.tipo_demanda ?: "N/D"}"
 
+		// --- LÓGICA DE STATUS (ADICIONADO) ---
+		if (demanda.status_vistoria.equals("concluida", ignoreCase = true)) {
+			holder.statusTextView.text = "Concluída"
+			holder.statusTextView.setTextColor(Color.parseColor("#1A5912")) // Verde Escuro
+			holder.vistoriaButton.text = "Ver / Refazer Vistoria"
+		} else {
+			holder.statusTextView.text = "Pendente"
+			holder.statusTextView.setTextColor(Color.parseColor("#C62828")) // Vermelho
+			holder.vistoriaButton.text = "Iniciar Vistoria"
+		}
+
 		holder.vistoriaButton.setOnClickListener {
-			onVistoriaClick(demanda) // Chama a função de clique passando a demanda
+			onVistoriaClick(demanda)
 		}
 	}
 

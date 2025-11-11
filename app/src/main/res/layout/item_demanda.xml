@@ -44,10 +44,24 @@
             android:layout_marginTop="4dp"
             android:textAppearance="?attr/textAppearanceBodyMedium"
             android:textColor="@color/black"
-            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintEnd_toStartOf="@id/demandaStatusTextView"
             app:layout_constraintStart_toStartOf="@id/demandaEnderecoTextView"
             app:layout_constraintTop_toBottomOf="@id/demandaEnderecoTextView"
+            app:layout_constraintHorizontal_bias="0.0"
             tools:text="Tipo: Poda" />
+
+        <TextView
+            android:id="@+id/demandaStatusTextView"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:textAppearance="?attr/textAppearanceBodyMedium"
+            android:textStyle="bold"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="@id/demandaTipoTextView"
+            app:layout_constraintBottom_toBottomOf="@id/demandaTipoTextView"
+            tools:text="Pendente"
+            tools:textColor="#C62828" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnIniciarVistoria"

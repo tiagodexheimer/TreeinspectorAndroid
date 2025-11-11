@@ -34,4 +34,8 @@ interface DemandaDao {
 	 */
 	@Query("DELETE FROM demandas WHERE rota_id = :rotaId")
 	suspend fun clearDemandasDaRota(rotaId: Int)
+
+	@Query("UPDATE demandas SET status_vistoria = :status WHERE id = :demandaId")
+	suspend fun updateStatus(demandaId: Int, status: String) // <-- ADICIONE ESTA FUNÇÃO
+
 }
