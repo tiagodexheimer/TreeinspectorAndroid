@@ -60,6 +60,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
                         android:textAppearance="?attr/textAppearanceBodyLarge"
+                        android:textColor="#000000"
                         tools:text="Rua das Flores, 123 - Centro" />
 
                     <TextView
@@ -67,10 +68,10 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="12dp"
-                        android:maxLines="3"
                         android:ellipsize="end"
+                        android:maxLines="3"
                         android:textAppearance="?attr/textAppearanceBodyMedium"
-                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:textColor="#000000"
                         tools:text="Descrição da demanda, poda de árvore grande na frente da casa, risco de queda..." />
 
                     <com.google.android.material.button.MaterialButton
