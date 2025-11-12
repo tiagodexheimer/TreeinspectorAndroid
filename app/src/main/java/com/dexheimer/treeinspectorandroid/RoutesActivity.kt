@@ -13,7 +13,7 @@ import com.android.volley.toolbox.Volley
 
 class RoutesActivity : AppCompatActivity() {
 
-	private val API_URL = "https://tree-inspector-v5.vercel.app/api/rotas"
+	private val API_URL = "${BuildConfig.API_BASE_URL}/rotas"
 	private lateinit var recyclerView: RecyclerView
 	private lateinit var rotaAdapter: RotaAdapter
 

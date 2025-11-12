@@ -20,9 +20,32 @@ android {
 		testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 	}
 
+	buildFeatures {
+		buildConfig = true
+	}
+
 	buildTypes {
+		debug {
+			// "API_BASE_URL" será o nome da sua variável
+			// "http://10.0.2.2:3000/api" é o valor (note as aspas escapadas \"\")
+			// O /api no final é porque suas duas activities usam isso como base
+			buildConfigField(
+				type = "String",
+				name = "API_BASE_URL",
+				value = "\"http://10.0.2.2:3000/\""
+			)
+		}
 		release {
-			isMinifyEnabled = false
+			// Esta é a URL que o app usará quando você gerar o APK para a loja
+			// (Peguei a URL de produção que estava no seu RotaDetalheActivity.kt)
+			buildConfigField(
+				type = "String",
+				name = "API_BASE_URL",
+				value = "\"https://tree-inspector-v5.vercel.app/\""
+			)
+
+			// Você também deve habilitar isso para 'release'
+			isMinifyEnabled = true
 			proguardFiles(
 				getDefaultProguardFile("proguard-android-optimize.txt"),
 				"proguard-rules.pro"
