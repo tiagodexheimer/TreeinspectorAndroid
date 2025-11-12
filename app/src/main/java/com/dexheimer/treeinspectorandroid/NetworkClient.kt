@@ -15,7 +15,7 @@ object NetworkClient {
 	// 2. USE A VARIÁVEL GLOBAL DO BUILDCONFIG
 	// O Retrofit precisa que a URL termine com "/"
 	// O seu buildConfigField já tem "/api", então adicionamos a "/" no final.
-	private val BASE_URL = BuildConfig.API_BASE_URL + "/"
+	private val BASE_URL = BuildConfig.API_BASE_URL
 
 
 	// 1. Gerenciador de Cookies para salvar a sessão do NextAuth

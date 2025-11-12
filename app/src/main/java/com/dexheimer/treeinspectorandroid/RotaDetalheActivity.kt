@@ -9,8 +9,8 @@ import android.location.Location
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
-import android.view.Menu // <-- ADICIONADO PARA O MENU
-import android.view.MenuItem // <-- ADICIONADO PARA O MENU
+import android.view.Menu
+import android.view.MenuItem
 import android.view.View
 import android.widget.Button
 import android.widget.TextView
@@ -38,7 +38,6 @@ import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
-import com.dexheimer.treeinspectorandroid.BuildConfig
 
 class RotaDetalheActivity : AppCompatActivity() {
 
@@ -210,7 +209,7 @@ class RotaDetalheActivity : AppCompatActivity() {
 
 	private fun fetchRotaDetalhesNetwork(rotaId: Int) {
 		val queue = Volley.newRequestQueue(this)
-		val url = "$API_BASE_URL/rotas/$rotaId"
+		val url = "${API_BASE_URL}rotas/$rotaId"
 		Log.d("RotaDetalheActivity", "Buscando dados da rede: $url")
 
 		val jsonObjectRequest = JsonObjectRequest(
@@ -351,7 +350,7 @@ class RotaDetalheActivity : AppCompatActivity() {
 		}
 
 		Toast.makeText(this, "Otimizando ${demandaIds.size} paradas...", Toast.LENGTH_SHORT).show()
-		val url = "$API_BASE_URL/rotas/optimize"
+		val url = "${API_BASE_URL}rotas/optimize"
 		val requestBody = JSONObject()
 		requestBody.put("demandaIds", JSONArray(demandaIds))
 
