@@ -38,10 +38,11 @@ import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
+import com.dexheimer.treeinspectorandroid.BuildConfig
 
 class RotaDetalheActivity : AppCompatActivity() {
 
-	private val API_BASE_URL = "https://tree-inspector-v5.vercel.app/api"
+	private val API_BASE_URL = BuildConfig.API_BASE_URL
 
 	// --- Variáveis de Estado ---
 	private var demandasPendentes: MutableList<Demanda> = mutableListOf()
