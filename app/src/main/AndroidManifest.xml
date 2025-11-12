@@ -2,9 +2,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- +++ INÍCIO DAS CORREÇÕES +++ -->
+
+    <!-- 1. Permissão para acessar a internet (API) -->
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- 2. Permissão para acessar o estado da rede -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- +++ FIM DAS CORREÇÕES +++ -->
 
     <application
         android:allowBackup="true"
@@ -15,29 +20,51 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.TreeInspectorAndroid"
-        android:usesCleartextTraffic="true"
-        tools:targetApi="31">
 
-        <activity
-            android:name=".DemandaDetalheActivity"
-            android:exported="false" />
-        <activity
-            android:name=".RotaDetalheActivity"
-            android:exported="false" />
-        <activity
-            android:name=".RoutesActivity"
-            android:exported="false" />
-        <activity
-            android:name=".DemandaListActivity"
-            android:exported="false" />
-        <activity
-            android:name=".MainActivity"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
-    </application>
+        android:networkSecurityConfig="@xml/network_security_config"
+tools:targetApi="31">
 
-</manifest>
+    <!--
+      MainActivity é a tela de "Entrada" (Launcher)
+      Ela agora é a nossa tela de Login.
+    -->
+    <activity
+        android:name=".MainActivity"
+        android:exported="true">
+        <intent-filter>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent-filter>
+    </activity>
+
+    <!-- +++ INÍCIO DAS CORREÇÕES +++ -->
+
+    <!--
+      4. DECLARE TODAS AS OUTRAS ACTIVITIES
+      O app estava falhando porque estas linhas não existiam.
+    -->
+    <activity
+        android:name=".RoutesActivity"
+        android:exported="false" />
+
+    <activity
+        android:name=".DemandaListActivity"
+        android:exported="false" />
+
+    <activity
+        android:name=".RotaDetalheActivity"
+        android:exported="false" />
+
+    <activity
+        android:name=".DemandaDetalheActivity"
+        android:exported="false" />
+
+    <activity
+        android:name=".VistoriaActivity"
+        android:exported="false" />
+
+    <!-- +++ FIM DAS CORREÇÕES +++ -->
+
+</application>
+
+    </manifest>

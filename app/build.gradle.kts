@@ -1,8 +1,7 @@
 plugins {
 	alias(libs.plugins.android.application)
 	alias(libs.plugins.kotlin.android)
-	id("com.google.devtools.ksp") version "1.9.21-1.0.15" // ou
-	id("org.jetbrains.kotlin.kapt")
+	alias(libs.plugins.ksp)
 }
 
 android {
@@ -58,13 +57,18 @@ dependencies {
 	implementation(libs.gson)
 	implementation("com.google.android.gms:play-services-location:21.2.0")
 
+	implementation(libs.retrofit.core)
+	implementation(libs.retrofit.converter.gson)
+	implementation(libs.okhttp)
+	implementation(libs.okhttp.logging.interceptor)
+	implementation(libs.okhttp.urlconnection)
+
 	val room_version = "2.6.1"
 
 	implementation("androidx.room:room-runtime:$room_version")
-	annotationProcessor("androidx.room:room-compiler:$room_version")
 
 // Para Kotlin (KAPT)
-	kapt("androidx.room:room-compiler:$room_version")
+	ksp("androidx.room:room-compiler:2.6.1")
 
 // Para coroutines (recomendado)
 	implementation("androidx.room:room-ktx:$room_version")
