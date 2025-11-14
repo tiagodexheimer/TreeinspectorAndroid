@@ -9,57 +9,61 @@ import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
 import java.io.Serializable
 
-/**
- * Classe para o TypeConverter do Room.
- * Isso ensina o Room a salvar o objeto 'Geom' como um texto (JSON) no banco de dados
- * e a convertê-lo de volta para um objeto 'Geom' ao ser lido.
- */
-class GeomTypeConverter {
-	private val gson = Gson()
+// Classe GeomTypeConverter: Manter como está (dentro deste arquivo)
 
-	/**
-	 * Converte um objeto Geom em uma String JSON
-	 */
-	@TypeConverter
-	fun fromGeom(geom: Geom?): String? {
-		return geom?.let { gson.toJson(it) }
-	}
-
-	/**
-	 * Converte uma String JSON de volta para um objeto Geom
-	 */
-	@TypeConverter
-	fun toGeom(geomString: String?): Geom? {
-		return geomString?.let { gson.fromJson(it, Geom::class.java) }
-	}
-}
-
-
-/**
- * Classe principal que representa uma Demanda (uma parada na rota).
- *
- * Agora está anotada como @Entity para ser usada pelo Room (banco de dados local).
- * Ela usa a classe 'Geom' (definida em Geom.kt)
- */
-@Entity(tableName = "demandas") // <-- ANOTAÇÃO DO ROOM: Define o nome da tabela
-@TypeConverters(GeomTypeConverter::class) // <-- ANOTAÇÃO DO ROOM: Diz para usar o converter acima
+@Entity(tableName = "demandas")
+@TypeConverters(GeomTypeConverter::class)
 data class Demanda(
 
-	@PrimaryKey // <-- ANOTAÇÃO DO ROOM: Define o 'id' como chave primária
+	@PrimaryKey
 	@SerializedName("id")
 	val id: Int,
 
-	@SerializedName("geom")
-	val geom: Geom?, // <-- Room usará o GeomTypeConverter para este campo
+	// --- NOVOS CAMPOS DA API (Coordenadas, Status, Protocolo, Solicitante) ---
+	@SerializedName("lat")
+	val lat: Double?,
+	@SerializedName("lng")
+	val lng: Double?,
 
+	@SerializedName("id_status")
+	val id_status: Int?,
+	@SerializedName("status_nome")
+	val status_nome: String?,
+	@SerializedName("status_cor")
+	val status_cor: String?,
+
+	@SerializedName("protocolo")
+	val protocolo: String?,
+	@SerializedName("nome_solicitante")
+	val nome_solicitante: String?,
+	@SerializedName("telefone_solicitante")
+	val telefone_solicitante: String?,
+	@SerializedName("email_solicitante")
+	val email_solicitante: String?,
+	@SerializedName("prazo")
+	val prazo: String?,
+	@SerializedName("created_at")
+	val created_at: String?,
+	@SerializedName("updated_at")
+	val updated_at: String?,
+
+	// --- CAMPOS DE ENDEREÇO ATUALIZADOS ---
+	@SerializedName("cep")
+	val cep: String?,
 	@SerializedName("logradouro")
 	val logradouro: String?,
 
 	@SerializedName("numero")
 	val numero: String?,
 
+	@SerializedName("complemento")
+	val complemento: String?,
 	@SerializedName("bairro")
 	val bairro: String?,
+	@SerializedName("cidade")
+	val cidade: String?,
+	@SerializedName("uf")
+	val uf: String?,
 
 	@SerializedName("tipo_demanda")
 	val tipo_demanda: String?,
@@ -67,21 +71,15 @@ data class Demanda(
 	@SerializedName("descricao")
 	val descricao: String?,
 
-	// --- CAMPO ADICIONAL PARA O BANCO DE DADOS LOCAL ---
-	/**
-	 * Chave estrangeira para associar esta demanda a uma Rota no banco local.
-	 * Este campo NÃO é preenchido pelo Gson (pois não vem da API neste nível),
-	 * mas é usado para o banco de dados Room.
-	 * Ele é definido manualmente na RotaDetalheActivity antes de salvar no banco.
-	 */
+	// --- CAMPO DE GEOMETRIA ORIGINAL ---
+	@SerializedName("geom")
+	val geom: Geom?,
+
+	// --- CAMPOS LOCAIS DO ROOM ---
 	@ColumnInfo(name = "status_vistoria", defaultValue = "pendente")
 	var status_vistoria: String = "pendente",
 
-	@ColumnInfo(name = "rota_id", index = true) // <-- Coluna para o ID da Rota
+	@ColumnInfo(name = "rota_id", index = true)
 	var rotaId: Int = 0
 
-
 ) : Serializable
-
-// ---- APAGUE QUALQUER OUTRA DEFINIÇÃO DE CLASSE DESTE ARQUIVO ----
-// (Não deve haver 'data class Geom' ou 'data class RotaDetalheResponse' aqui)

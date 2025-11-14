@@ -73,10 +73,8 @@ class MainActivity : AppCompatActivity() {
 		}
 		Log.d(TAG, "Fase 0: SUCESSO - Inputs validados.")
 
-		// Mostra o loading e desabilita o botão
 		showLoading(true)
 
-		// Inicia a Coroutine para chamadas de rede
 		lifecycleScope.launch {
 			try {
 				// --- FASE 1: BUSCAR TOKEN CSRF ---
@@ -84,7 +82,6 @@ class MainActivity : AppCompatActivity() {
 				val csrfResponse = NetworkClient.api.getCsrfToken()
 
 				if (!csrfResponse.isSuccessful || csrfResponse.body()?.csrfToken == null) {
-					// Falha ao buscar o token
 					Log.e(TAG, "Fase 1: FALHA ao buscar token CSRF! Código: ${csrfResponse.code()}")
 					throw Exception("Erro de segurança ao iniciar login (CSRF)")
 				}
@@ -97,36 +94,54 @@ class MainActivity : AppCompatActivity() {
 				val request = LoginRequest(
 					email = email,
 					password = password,
-					csrfToken = csrfToken // Enviando o token
+					csrfToken = csrfToken
 				)
 
 				val loginResponse = NetworkClient.api.login(request)
 
-				// Se for 401, a senha está errada.
+				// --- INÍCIO DA CORREÇÃO ---
+
+				// Se for 401 (Não autorizado), a senha está errada.
 				if (loginResponse.code() == 401) {
 					Log.w(TAG, "Fase 2: FALHA (401) - Email ou senha inválidos.")
-					throw Exception("Email ou senha inválidos")
+					throw Exception("Email ou senha inválidos (401)")
 				}
 
-				// --- FASE 3: SUCESSO NO LOGIN ---
-				// Se for 200 (Sucesso) OU 302 (Redirecionamento de Sucesso), consideramos logado.
-				if (loginResponse.isSuccessful || loginResponse.code() == 302) {
+				// Se for 302 (Redirecionamento)
+				if (loginResponse.code() == 302) {
+					// Verificamos se é um 302 de SUCESSO (que envia o cookie de sessão)
+					val cookies = loginResponse.headers().values("Set-Cookie")
+					val hasSessionCookie = cookies.any { it.startsWith("next-auth.session-token") }
+
+					if (hasSessionCookie) {
+						// SUCESSO! Este é um redirecionamento de login válido.
+						Log.i(TAG, "Fase 3: SUCESSO! Login OK (Code: 302) e Cookie de Sessão recebido.")
+						sessionManager.setLoggedIn(true)
+						navigateToApp()
+					} else {
+						// FALHA! Este é um redirecionamento para uma página de erro.
+						Log.w(TAG, "Fase 3: FALHA (302) - Sem cookie de sessão. Provavelmente senha errada.")
+						throw Exception("Email ou senha inválidos")
+					}
+				}
+				// Se for 200 (Sucesso direto)
+				else if (loginResponse.isSuccessful) {
 					Log.i(TAG, "Fase 3: SUCESSO! Login OK (Code: ${loginResponse.code()}).")
 					sessionManager.setLoggedIn(true)
-
-					Log.d(TAG, "Navegando para a RoutesActivity...")
 					navigateToApp()
-				} else {
-					// Qualquer outro código é um erro inesperado
+				}
+				// Qualquer outro caso é um erro.
+				else {
 					Log.e(TAG, "Fase 3: FALHA - Erro inesperado (Code: ${loginResponse.code()})")
 					throw Exception("Erro inesperado do servidor: ${loginResponse.code()}")
 				}
+				// --- FIM DA CORREÇÃO ---
 
 			} catch (e: Exception) {
-				// --- FASE 4: FALHA GERAL (CSRF, Login, ou Sem Rede) ---
+				// --- FASE 4: FALHA GERAL ---
 				Log.e(TAG, "Fase 4: FALHA GERAL (Exceção)", e)
 				Toast.makeText(this@MainActivity, e.message ?: "Erro de conexão", Toast.LENGTH_LONG).show()
-				showLoading(false) // Esconde o loading e reabilita o botão
+				showLoading(false)
 			}
 		}
 	}

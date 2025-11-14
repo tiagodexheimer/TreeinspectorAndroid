@@ -27,6 +27,7 @@ object NetworkClient {
 	// 2. Cliente OkHttp que usa o CookieJar e o Logging
 	private val okHttpClient = OkHttpClient.Builder()
 		.cookieJar(cookieJar)
+		.followRedirects(false) // <-- ADICIONE ESTA LINHA
 		.addInterceptor(HttpLoggingInterceptor().apply {
 			level = HttpLoggingInterceptor.Level.BODY // Ótimo para debug
 		})

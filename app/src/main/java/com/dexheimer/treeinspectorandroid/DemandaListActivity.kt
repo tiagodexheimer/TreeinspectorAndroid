@@ -47,9 +47,11 @@ class DemandaListActivity : AppCompatActivity() {
 		supportActionBar?.title = "Todas as Demandas da Rota"
 		supportActionBar?.setDisplayHomeAsUpEnabled(true)
 
-		demandasRecyclerView = findViewById(R.id.demandasRecyclerView)
+		// O DemandaAdapter receberá a lista de Demandas, que agora inclui os novos campos
+		// (lat, lng, status_cor, etc.). O Adapter (não fornecido) deve ser capaz de usá-los.
 		demandaAdapter = DemandaAdapter(emptyList()) { demandaClicada ->
 			val intent = android.content.Intent(this, DemandaDetalheActivity::class.java).apply {
+				// O objeto Demanda contém todos os novos dados, pois o Room o carregou completo
 				putExtra("DEMANDA_EXTRA", demandaClicada)
 			}
 			vistoriaLauncher.launch(intent)
@@ -64,6 +66,7 @@ class DemandaListActivity : AppCompatActivity() {
 		if (rotaId == -1) return
 		lifecycleScope.launch {
 			demandasCarregadas = withContext(Dispatchers.IO) {
+				// Esta função retorna o objeto Demanda completo, com todos os novos campos
 				db.demandaDao().getDemandasDaRota(rotaId)
 			}.toMutableList()
 
@@ -88,14 +91,13 @@ class DemandaListActivity : AppCompatActivity() {
 		}
 	}
 
-	// Modificado para notificar a RotaDetalheActivity
+	// Funções de navegação (Manter inalteradas)
 	override fun onSupportNavigateUp(): Boolean {
 		setResult(Activity.RESULT_OK)
 		finish()
 		return true
 	}
 
-	// Lida com o botão "Voltar" do sistema da mesma forma
 	override fun onBackPressed() {
 		setResult(Activity.RESULT_OK)
 		super.onBackPressed()

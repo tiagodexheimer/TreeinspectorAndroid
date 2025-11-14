@@ -2,20 +2,16 @@ package com.dexheimer.treeinspectorandroid
 
 import com.google.gson.annotations.SerializedName
 
-// Corrigido para espelhar a resposta completa da API (AGORA COM GEOMETRY)
+// MODELO CORRETO - Garante que as novas Demandas são desserializadas.
 data class RotaDetalhe(
 
-	// Mapeia o objeto "rota"
 	@SerializedName("rota")
 	val rota: RotaInfo,
 
-	// Mapeia a lista "demandas"
+	// O Demanda aqui deve ser a nova classe com todos os novos campos.
 	@SerializedName("demandas")
 	val demandas: List<Demanda>,
 
-	// --- NOVO CAMPO ---
-	// Mapeia o polyline encodado do OSRM
-	// (String? significa que pode ser nulo, caso o OSRM falhe)
 	@SerializedName("geometry")
 	val geometry: String?
 )

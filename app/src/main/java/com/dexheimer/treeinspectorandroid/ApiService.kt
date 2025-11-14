@@ -6,11 +6,13 @@ package com.dexheimer.treeinspectorandroid
 // Importações do GSON (para @SerializedName)
 
 // Importação do seu modelo de dados 'Demanda'
+import DemandasResponse
 import com.google.gson.annotations.SerializedName
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
+import retrofit2.http.Path
 
 // --- Data Classes para Login ---
 
@@ -74,7 +76,20 @@ interface ApiService {
 	 * O cookie de sessão salvo pelo 'login' será enviado automaticamente.
 	 */
 	@GET("api/demandas")
-	suspend fun getDemandas(): Response<List<Demanda>>
+	suspend fun getDemandas(): Response<DemandasResponse>
+
+	@GET("api/rotas/{id}")
+	suspend fun getRotaDetalhes(@Path("id") rotaId: Int): Response<RotaDetalhe>
+
 
 	// ... (No futuro, você pode adicionar POST /api/demandas, GET /api/rotas, etc.)
 }
+data class DemandasResponse(
+	@SerializedName("demandas")
+	val demandas: List<Demanda>,
+
+	@SerializedName("totalCount")
+	val totalCount: Int?,
+	@SerializedName("limit")
+	val limit: Int?
+)
