@@ -2,7 +2,7 @@ package com.dexheimer.treeinspectorandroid
 
 import android.content.Intent
 import android.os.Bundle
-import android.util.Log // Importe o Log
+import android.util.Log
 import android.view.View
 import android.widget.Button
 import android.widget.ProgressBar
@@ -15,7 +15,6 @@ import kotlinx.coroutines.launch
 class MainActivity : AppCompatActivity() {
 
 	// --- LOGGING TAG ---
-	// Usaremos isso para filtrar os logs no Logcat
 	private val TAG = "MainActivity"
 
 	// Gerenciador de Sessão para "lembrar" do login
@@ -82,7 +81,23 @@ class MainActivity : AppCompatActivity() {
 				val csrfResponse = NetworkClient.api.getCsrfToken()
 
 				if (!csrfResponse.isSuccessful || csrfResponse.body()?.csrfToken == null) {
+
+					// ===========================================
+					// NOVO LOG DE DIAGNÓSTICO
+					// ===========================================
 					Log.e(TAG, "Fase 1: FALHA ao buscar token CSRF! Código: ${csrfResponse.code()}")
+
+					// 1. Loga o Corpo da Resposta Bruta
+					val rawBody = csrfResponse.errorBody()?.string() ?: csrfResponse.body()?.toString()
+					Log.e(TAG, "DIAGNOSE CSRF: Response Body (RAW): $rawBody")
+
+					// 2. Loga os Headers
+					Log.e(TAG, "DIAGNOSE CSRF: Headers:")
+					for (header in csrfResponse.headers().names()) {
+						Log.e(TAG, "  -> $header: ${csrfResponse.headers().get(header)}")
+					}
+					// ===========================================
+
 					throw Exception("Erro de segurança ao iniciar login (CSRF)")
 				}
 
@@ -98,8 +113,6 @@ class MainActivity : AppCompatActivity() {
 				)
 
 				val loginResponse = NetworkClient.api.login(request)
-
-				// --- INÍCIO DA CORREÇÃO ---
 
 				// Se for 401 (Não autorizado), a senha está errada.
 				if (loginResponse.code() == 401) {
@@ -135,11 +148,10 @@ class MainActivity : AppCompatActivity() {
 					Log.e(TAG, "Fase 3: FALHA - Erro inesperado (Code: ${loginResponse.code()})")
 					throw Exception("Erro inesperado do servidor: ${loginResponse.code()}")
 				}
-				// --- FIM DA CORREÇÃO ---
 
 			} catch (e: Exception) {
 				// --- FASE 4: FALHA GERAL ---
-				Log.e(TAG, "Fase 4: FALHA GERAL (Exceção)", e)
+				Log.e(TAG, "Fase 4: FALHA GERAL (Exceção) (Ask Gemini)", e)
 				Toast.makeText(this@MainActivity, e.message ?: "Erro de conexão", Toast.LENGTH_LONG).show()
 				showLoading(false)
 			}
@@ -151,7 +163,6 @@ class MainActivity : AppCompatActivity() {
 	 * e fecha a tela de login (MainActivity).
 	 */
 	private fun navigateToApp() {
-		// --- ESTA É A LINHA QUE VOCÊ MUDOU ---
 		val intent = Intent(this, RoutesActivity::class.java)
 		startActivity(intent)
 		finish() // Fecha a MainActivity para que o usuário não possa "voltar" para o login

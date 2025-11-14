@@ -36,20 +36,9 @@ android {
 			)
 		}
 		release {
-			// Esta é a URL que o app usará quando você gerar o APK para a loja
-			// (Peguei a URL de produção que estava no seu RotaDetalheActivity.kt)
-			buildConfigField(
-				type = "String",
-				name = "API_BASE_URL",
-				value = "\"https://tree-inspector-v5.vercel.app/\""
-			)
-
-			// Você também deve habilitar isso para 'release'
-			isMinifyEnabled = true
-			proguardFiles(
-				getDefaultProguardFile("proguard-android-optimize.txt"),
-				"proguard-rules.pro"
-			)
+			// ...
+			// ISTO DEVE ESTAR PERFEITO:
+			buildConfigField("String", "API_BASE_URL", "\"https://www.treeinspector.com.br/\"")
 		}
 	}
 	compileOptions {

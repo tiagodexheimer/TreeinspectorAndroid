@@ -10,4 +10,7 @@
         <domain includeSubdomains="true">127.0.0.1</domain>
     </domain-config>
 
+    <domain-config>
+        <domain includeSubdomains="true">treeinspector.com.br</domain>
+    </domain-config>
 </network-security-config>
