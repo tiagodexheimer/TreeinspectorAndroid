@@ -47,8 +47,11 @@ class DemandaListActivity : AppCompatActivity() {
 		supportActionBar?.title = "Todas as Demandas da Rota"
 		supportActionBar?.setDisplayHomeAsUpEnabled(true)
 
-		// O DemandaAdapter receberá a lista de Demandas, que agora inclui os novos campos
-		// (lat, lng, status_cor, etc.). O Adapter (não fornecido) deve ser capaz de usá-los.
+		// +++ CORREÇÃO: ADICIONAR FINDVIEWBYID +++
+		demandasRecyclerView = findViewById(R.id.demandasRecyclerView)
+		// +++++++++++++++++++++++++++++++++++++++
+
+		// O DemandaAdapter receberá a lista de Demandas...
 		demandaAdapter = DemandaAdapter(emptyList()) { demandaClicada ->
 			val intent = android.content.Intent(this, DemandaDetalheActivity::class.java).apply {
 				// O objeto Demanda contém todos os novos dados, pois o Room o carregou completo
@@ -56,6 +59,8 @@ class DemandaListActivity : AppCompatActivity() {
 			}
 			vistoriaLauncher.launch(intent)
 		}
+
+		// Estas linhas agora funcionarão, pois demandasRecyclerView está inicializada.
 		demandasRecyclerView.layoutManager = LinearLayoutManager(this)
 		demandasRecyclerView.adapter = demandaAdapter
 
