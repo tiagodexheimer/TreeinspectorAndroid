@@ -52,43 +52,50 @@ android {
 }
 
 dependencies {
+	// --- UI/Core AndroidX ---
 	implementation(libs.androidx.core.ktx)
 	implementation(libs.androidx.appcompat)
 	implementation(libs.material)
 	implementation(libs.androidx.activity)
+	implementation(libs.androidx.activity.ktx) // Usando alias KTX
 	implementation(libs.androidx.constraintlayout)
-	testImplementation(libs.junit)
-	androidTestImplementation(libs.androidx.junit)
-	androidTestImplementation(libs.androidx.espresso.core)
-	implementation("com.android.volley:volley:1.2.1")
-	implementation("com.google.code.gson:gson:2.10.1")
-	implementation("com.google.android.gms:play-services-maps:18.2.0")
-	implementation("com.google.maps.android:maps-utils-ktx:3.4.0")
-	implementation(libs.androidx.constraintlayout)
-	implementation(libs.volley)
-	implementation(libs.osmdroid)
-	implementation(libs.gson)
-	implementation("com.google.android.gms:play-services-location:21.2.0")
 
+	// --- DI/Hilt ---
+	implementation(libs.hilt.android)
+	ksp(libs.hilt.compiler)
+	implementation(libs.hilt.work)
+	ksp(libs.hilt.work.compiler)
+
+	// --- Banco de Dados (Room) ---
+	implementation(libs.room.runtime)
+	implementation(libs.room.ktx)
+	ksp(libs.room.compiler)
+
+	// --- Background (WorkManager) ---
+	implementation(libs.work.runtime.ktx)
+
+	// --- Rede / Serialização ---
+	// Volley e GSON explícitos foram substituídos por aliases
 	implementation(libs.retrofit.core)
 	implementation(libs.retrofit.converter.gson)
 	implementation(libs.okhttp)
 	implementation(libs.okhttp.logging.interceptor)
 	implementation(libs.okhttp.urlconnection)
+	implementation(libs.gson)
 
-	val room_version = "2.6.1"
+	// --- Mapas / Localização ---
+	// Removidas declarações explícitas e duplicadas
+	implementation(libs.osmdroid)
+	implementation(libs.play.services.maps)
+	implementation(libs.maps.utils.ktx)
+	implementation(libs.play.services.location)
+	// Note: Volley foi removido por ser obsoleto após a refatoração do Login
 
-	implementation("androidx.room:room-runtime:$room_version")
+	// --- Testes ---
+	testImplementation(libs.junit)
+	androidTestImplementation(libs.androidx.junit)
+	androidTestImplementation(libs.androidx.espresso.core)
 
-// Para Kotlin (KAPT)
-	ksp("androidx.room:room-compiler:2.6.1")
-
-// Para coroutines (recomendado)
-	implementation("androidx.room:room-ktx:$room_version")
-
-	implementation("androidx.work:work-runtime-ktx:2.9.0")
-	implementation("androidx.activity:activity-ktx:1.9.0")
-	implementation(libs.hilt.android)
-	ksp(libs.hilt.compiler)
-
+	// Removendo declarações duplicadas
+	// implementation("com.android.volley:volley:1.2.1") <--- REMOVIDO
 }
