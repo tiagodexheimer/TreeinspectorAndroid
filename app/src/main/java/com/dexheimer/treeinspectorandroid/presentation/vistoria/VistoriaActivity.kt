@@ -30,13 +30,13 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.dexheimer.treeinspectorandroid.R
 import com.dexheimer.treeinspectorandroid.data.local.AppDatabase
-import com.dexheimer.treeinspectorandroid.data.local.Demanda
 import com.dexheimer.treeinspectorandroid.data.local.FormularioCache
 import com.dexheimer.treeinspectorandroid.data.local.VistoriaPendente
 import com.dexheimer.treeinspectorandroid.data.remote.FormField
 import com.dexheimer.treeinspectorandroid.data.remote.NetworkClient
 import com.dexheimer.treeinspectorandroid.data.remote.VistoriaRequest
 import com.dexheimer.treeinspectorandroid.data.worker.SyncVistoriasWorker
+import com.dexheimer.treeinspectorandroid.domain.model.Demanda
 import com.google.android.material.switchmaterial.SwitchMaterial
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
@@ -94,11 +94,11 @@ class VistoriaActivity : AppCompatActivity() {
 
 		// 5. Preencher Dados e Buscar Formulário
 		if (demandaAtual != null) {
-			txtTipoDemanda.text = demandaAtual?.tipo_demanda ?: "Não informado"
+			txtTipoDemanda.text = demandaAtual?.tipoDemanda ?: "Não informado"
 			txtEndereco.text = "${demandaAtual?.logradouro ?: ""}, ${demandaAtual?.numero ?: ""}\n${demandaAtual?.bairro ?: ""}"
 			txtDescricao.text = demandaAtual?.descricao ?: "Sem descrição."
 
-			buscarFormulario(demandaAtual!!.tipo_demanda ?: "")
+			buscarFormulario(demandaAtual!!.tipoDemanda ?: "")
 		} else {
 			Toast.makeText(this, "Erro crítico: Dados não encontrados.", Toast.LENGTH_LONG).show()
 			finish()

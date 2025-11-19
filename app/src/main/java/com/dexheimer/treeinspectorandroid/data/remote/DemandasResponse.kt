@@ -1,6 +1,6 @@
 // Em ApiService.kt (ou um novo arquivo de modelo)
 
-import com.dexheimer.treeinspectorandroid.data.local.Demanda
+import com.dexheimer.treeinspectorandroid.data.remote.DemandaDTO
 import com.google.gson.annotations.SerializedName
 
 /**
@@ -8,7 +8,7 @@ import com.google.gson.annotations.SerializedName
  */
 data class DemandasResponse(
 	@SerializedName("demandas")
-	val demandas: List<Demanda>,
+	val demandas: List<DemandaDTO>,
 
 	// Incluir metadados (opcional, mas recomendado)
 	@SerializedName("totalCount")

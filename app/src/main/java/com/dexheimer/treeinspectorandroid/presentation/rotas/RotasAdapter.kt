@@ -6,7 +6,7 @@ import android.view.ViewGroup
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.dexheimer.treeinspectorandroid.R
-import com.dexheimer.treeinspectorandroid.data.local.Rota
+import com.dexheimer.treeinspectorandroid.domain.model.Rota
 
 // Remova a importação do Chip se não for mais usada
 // import com.google.android.material.chip.Chip
@@ -39,20 +39,16 @@ class RotaAdapter(
 	override fun onBindViewHolder(holder: RotaViewHolder, position: Int) {
 		val rota = rotas[position]
 
-		// Preenche os dados na tela
 		holder.nomeTextView.text = rota.nome
-		// A linha abaixo (41) funcionará após você atualizar 'Rota.kt'
-		holder.demandasTextView.text = "Demandas: ${rota.total_demandas ?: 0}"
 
-		// ======== CORREÇÃO ESTÁ AQUI (Linha 46 do arquivo original) ========
-		// Trocamos 'data_criacao' por 'created_at' e adicionamos null-safety ('?.')
-		val dataFormatada = rota.created_at?.split("T")?.firstOrNull() ?: rota.created_at
+		// CORREÇÃO: total_demandas -> totalDemandas
+		holder.demandasTextView.text = "Demandas: ${rota.totalDemandas}"
+
+		// CORREÇÃO: created_at -> dataCriacao
+		// Nota: No Domain definimos como dataCriacao
+		val dataFormatada = rota.dataCriacao?.split("T")?.firstOrNull() ?: rota.dataCriacao
 		holder.dataTextView.text = "Criada em: $dataFormatada"
-		// ====================================================================
 
-		// A lógica de cor e status foi removida
-
-		// Define a ação de clique no item (sem mudança aqui)
 		holder.itemView.setOnClickListener {
 			onItemClick(rota.id)
 		}

@@ -2,6 +2,7 @@ plugins {
 	alias(libs.plugins.android.application)
 	alias(libs.plugins.kotlin.android)
 	alias(libs.plugins.ksp)
+	alias(libs.plugins.hilt)
 }
 
 android {
@@ -86,5 +87,8 @@ dependencies {
 	implementation("androidx.room:room-ktx:$room_version")
 
 	implementation("androidx.work:work-runtime-ktx:2.9.0")
+	implementation("androidx.activity:activity-ktx:1.9.0")
+	implementation(libs.hilt.android)
+	ksp(libs.hilt.compiler)
 
 }

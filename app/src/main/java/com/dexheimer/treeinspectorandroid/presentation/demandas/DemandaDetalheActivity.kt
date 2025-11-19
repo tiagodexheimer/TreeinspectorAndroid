@@ -11,8 +11,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
 import com.dexheimer.treeinspectorandroid.R
+import com.dexheimer.treeinspectorandroid.domain.model.Demanda
 import com.dexheimer.treeinspectorandroid.presentation.vistoria.VistoriaActivity
-import com.dexheimer.treeinspectorandroid.data.local.Demanda
 
 class DemandaDetalheActivity : AppCompatActivity() {
 
@@ -63,10 +63,9 @@ class DemandaDetalheActivity : AppCompatActivity() {
 	}
 
 	private fun preencherDados() {
-		// CORREÇÃO: Usando os IDs corretos do activity_demanda_detalhe.xml
-
 		// Tipo (detalheTipoTextView)
-		findViewById<TextView>(R.id.detalheTipoTextView).text = "Tipo: ${demanda.tipo_demanda ?: "-"}"
+		// CORREÇÃO: tipo_demanda -> tipoDemanda
+		findViewById<TextView>(R.id.detalheTipoTextView).text = "Tipo: ${demanda.tipoDemanda ?: "-"}"
 
 		// Protocolo/ID (detalheIdTextView)
 		findViewById<TextView>(R.id.detalheIdTextView).text = "Protocolo: ${demanda.protocolo ?: "-"}"

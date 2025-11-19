@@ -1,37 +1,44 @@
 package com.dexheimer.treeinspectorandroid.presentation.demandas
 
+import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.dexheimer.treeinspectorandroid.R
-import com.dexheimer.treeinspectorandroid.data.local.AppDatabase
-import com.dexheimer.treeinspectorandroid.data.local.Demanda
-import kotlinx.coroutines.Dispatchers
+import com.dexheimer.treeinspectorandroid.domain.model.Demanda
+import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
+@AndroidEntryPoint // <--- ESSENCIAL: Permite a injeção do ViewModel
 class DemandaListActivity : AppCompatActivity() {
 
-	private lateinit var db: AppDatabase
+	private val viewModel: DemandasListViewModel by viewModels() // Injeção do ViewModel
+
 	private lateinit var demandasRecyclerView: RecyclerView
 	private lateinit var demandaAdapter: DemandaAdapter
 	private var rotaId: Int = -1
-	private var demandasCarregadas: MutableList<Demanda> = mutableListOf()
 
+	// Launcher para pegar o resultado da VistoriaActivity
 	private val vistoriaLauncher = registerForActivityResult(
 		ActivityResultContracts.StartActivityForResult()
 	) { result ->
-		if (result.resultCode == RESULT_OK) {
-			val novoStatus = result.data?.getStringExtra("NOVO_STATUS") ?: return@registerForActivityResult
+		if (result.resultCode == Activity.RESULT_OK) {
+			val novoStatus = result.data?.getStringExtra("NOVO_STATUS")
 			val demandaId = result.data?.getIntExtra("DEMANDA_ID", -1) ?: -1
-			if (demandaId != -1) {
-				atualizarStatusDemanda(demandaId, novoStatus)
+
+			if (novoStatus != null && demandaId != -1) {
+				// CORREÇÃO: Chama o ViewModel para atualizar o status e reordenar a lista
+				viewModel.atualizarStatusDemanda(demandaId, novoStatus)
 			}
 		} else {
 			Log.d("DemandaListActivity", "Vistoria não finalizada (usuário voltou).")
@@ -42,72 +49,70 @@ class DemandaListActivity : AppCompatActivity() {
 		super.onCreate(savedInstanceState)
 		setContentView(R.layout.activity_demanda_list)
 
-		db = AppDatabase.getInstance(applicationContext)
 		rotaId = intent.getIntExtra("ROTA_ID", -1)
 
+		setupToolbar()
+		setupRecyclerView()
+		observarViewModel()
+	}
+
+	private fun setupToolbar() {
 		val toolbar: Toolbar = findViewById(R.id.toolbar)
 		setSupportActionBar(toolbar)
 		supportActionBar?.title = "Todas as Demandas da Rota"
 		supportActionBar?.setDisplayHomeAsUpEnabled(true)
+	}
 
-		// +++ CORREÇÃO: ADICIONAR FINDVIEWBYID +++
+	private fun setupRecyclerView() {
 		demandasRecyclerView = findViewById(R.id.demandasRecyclerView)
-		// +++++++++++++++++++++++++++++++++++++++
 
-		// O DemandaAdapter receberá a lista de Demandas...
 		demandaAdapter = DemandaAdapter(emptyList()) { demandaClicada ->
-			val intent = Intent(this, DemandaDetalheActivity::class.java).apply {
-				// O objeto Demanda contém todos os novos dados, pois o Room o carregou completo
-				putExtra("DEMANDA_EXTRA", demandaClicada)
-			}
-			vistoriaLauncher.launch(intent)
+			abrirVistoria(demandaClicada)
 		}
 
-		// Estas linhas agora funcionarão, pois demandasRecyclerView está inicializada.
 		demandasRecyclerView.layoutManager = LinearLayoutManager(this)
 		demandasRecyclerView.adapter = demandaAdapter
-
-		carregarDemandasDoCache()
 	}
 
-	private fun carregarDemandasDoCache() {
-		if (rotaId == -1) return
+	private fun observarViewModel() {
 		lifecycleScope.launch {
-			demandasCarregadas = withContext(Dispatchers.IO) {
-				// Esta função retorna o objeto Demanda completo, com todos os novos campos
-				db.demandaDao().getDemandasDaRota(rotaId)
-			}.toMutableList()
+			repeatOnLifecycle(Lifecycle.State.STARTED) {
+				viewModel.uiState.collect { state ->
+					// 1. Erro ou Loading
+					if (state.isLoading) {
+						supportActionBar?.subtitle = "Carregando..."
+					}
+					if (state.error != null) {
+						Toast.makeText(this@DemandaListActivity, state.error, Toast.LENGTH_LONG).show()
+					}
 
-			demandasCarregadas.sortBy { it.status_vistoria != "pendente" }
-			demandaAdapter.updateData(demandasCarregadas)
+					// 2. Dados
+					demandaAdapter.updateData(state.demandas)
 
-			val pendentes = demandasCarregadas.count { it.status_vistoria == "pendente" }
-			supportActionBar?.subtitle = "$pendentes demandas pendentes"
-		}
-	}
-
-	private fun atualizarStatusDemanda(demandaId: Int, novoStatus: String) {
-		lifecycleScope.launch {
-			withContext(Dispatchers.IO) {
-				db.demandaDao().updateStatus(demandaId, novoStatus)
+					// 3. Subtítulo (Calculado no ViewModel, mas aqui calculamos do objeto Domain)
+					val pendentes = state.demandas.count { it.statusVistoria == "pendente" }
+					supportActionBar?.subtitle = "$pendentes demandas pendentes"
+				}
 			}
-			demandasCarregadas.find { it.id == demandaId }?.status_vistoria = novoStatus
-			demandasCarregadas.sortBy { it.status_vistoria != "pendente" }
-			demandaAdapter.updateData(demandasCarregadas)
-			val pendentes = demandasCarregadas.count { it.status_vistoria == "pendente" }
-			supportActionBar?.subtitle = "$pendentes demandas pendentes"
 		}
 	}
 
-	// Funções de navegação (Manter inalteradas)
+	private fun abrirVistoria(demanda: Demanda) {
+		val intent = Intent(this, DemandaDetalheActivity::class.java).apply {
+			putExtra("DEMANDA_EXTRA", demanda)
+		}
+		vistoriaLauncher.launch(intent)
+	}
+
+	// Funções de navegação para voltar à RotaDetalheActivity
 	override fun onSupportNavigateUp(): Boolean {
-		setResult(RESULT_OK)
+		setResult(Activity.RESULT_OK)
 		finish()
 		return true
 	}
 
 	override fun onBackPressed() {
-		setResult(RESULT_OK)
+		setResult(Activity.RESULT_OK)
 		super.onBackPressed()
 	}
 }

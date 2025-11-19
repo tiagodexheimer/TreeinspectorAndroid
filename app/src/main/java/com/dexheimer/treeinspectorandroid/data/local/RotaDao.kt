@@ -1,4 +1,4 @@
-package com.dexheimer.treeinspectorandroid.data.local
+package com.dexheimer.treeinspectorandroid.data.local // <--- Ajuste o pacote
 
 import androidx.room.Dao
 import androidx.room.Insert
@@ -8,15 +8,9 @@ import androidx.room.Query
 @Dao
 interface RotaDao {
 
-	/**
-	 * Busca uma rota específica pelo seu ID.
-	 */
 	@Query("SELECT * FROM rotas WHERE id = :rotaId LIMIT 1")
-	suspend fun getRotaById(rotaId: Int): Rota?
+	suspend fun getRotaById(rotaId: Int): RotaEntity? // Retorna a Entity
 
-	/**
-	 * Insere ou atualiza uma rota no banco de dados.
-	 */
 	@Insert(onConflict = OnConflictStrategy.REPLACE)
-	suspend fun insertRota(rota: Rota)
+	suspend fun insertRota(rota: RotaEntity) // Recebe a Entity
 }

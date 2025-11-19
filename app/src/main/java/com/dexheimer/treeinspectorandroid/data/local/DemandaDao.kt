@@ -1,4 +1,4 @@
-package com.dexheimer.treeinspectorandroid.data.local
+package com.dexheimer.treeinspectorandroid.data.local // <--- Ajuste o pacote
 
 import androidx.room.Dao
 import androidx.room.Delete
@@ -9,33 +9,23 @@ import androidx.room.Query
 @Dao
 interface DemandaDao {
 
-	/**
-	 * Busca todas as demandas associadas a um ID de rota específico,
-	 * ordenadas pela 'ordem' (que assumimos ser o 'id' por enquanto,
-	 * ou você pode adicionar um campo 'ordem' se a API o fornecer).
-	 */
+	// Busca todas as demandas da rota (retorna a Entity do banco)
 	@Query("SELECT * FROM demandas WHERE rota_id = :rotaId ORDER BY id ASC")
-	suspend fun getDemandasDaRota(rotaId: Int): List<Demanda>
+	suspend fun getDemandasDaRota(rotaId: Int): List<DemandaEntity>
 
-	/**
-	 * Insere uma lista de demandas. Se uma demanda já existir, ela é substituída.
-	 */
+	// Insere lista de Entities
 	@Insert(onConflict = OnConflictStrategy.REPLACE)
-	suspend fun insertAll(demandas: List<Demanda>)
+	suspend fun insertAll(demandas: List<DemandaEntity>)
 
-	/**
-	 * Deleta uma demanda específica (usado ao "Finalizar Vistoria").
-	 */
+	// Deleta uma Entity
 	@Delete
-	suspend fun deleteDemanda(demanda: Demanda)
+	suspend fun deleteDemanda(demanda: DemandaEntity)
 
-	/**
-	 * Limpa todas as demandas de uma rota (usado antes de inserir dados novos).
-	 */
+	// Limpa demandas (sem alteração na query, apenas no nome do método se quiser manter padrão)
 	@Query("DELETE FROM demandas WHERE rota_id = :rotaId")
 	suspend fun clearDemandasDaRota(rotaId: Int)
 
+	// Atualiza status (sem alteração na assinatura, pois usa tipos primitivos Int/String)
 	@Query("UPDATE demandas SET status_vistoria = :status WHERE id = :demandaId")
-	suspend fun updateStatus(demandaId: Int, status: String) // <-- ADICIONE ESTA FUNÇÃO
-
+	suspend fun updateStatus(demandaId: Int, status: String)
 }

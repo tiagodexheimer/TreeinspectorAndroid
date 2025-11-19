@@ -1,7 +1,7 @@
 // app/src/main/java/com/dexheimer/treeinspectorandroid/ApiService.kt
 package com.dexheimer.treeinspectorandroid.data.remote
 
-import com.dexheimer.treeinspectorandroid.data.local.Demanda
+import com.dexheimer.treeinspectorandroid.domain.model.Demanda
 import com.google.gson.annotations.SerializedName
 import retrofit2.Response
 import retrofit2.http.Body
@@ -62,6 +62,12 @@ interface ApiService {
 	// NOVO: Envia a vistoria realizada
 	@POST("api/mobile/salvar-vistoria")
 	suspend fun salvarVistoria(@Body request: VistoriaRequest): Response<Void> // Void pois não precisamos de corpo na resposta, só 200 OK
+	// Adicione dentro da interface ApiService
+	@GET("api/rotas")
+// Nota: Estamos a assumir que o JSON devolvido bate com a RotaEntity.
+// Se a API tiver campos diferentes, deveríamos criar um RotaDTO.
+	suspend fun getRotas(): retrofit2.Response<List<com.dexheimer.treeinspectorandroid.data.local.RotaEntity>>
+
 }
 
 // Classes de Resposta Auxiliares

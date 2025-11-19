@@ -8,7 +8,8 @@ import android.widget.Button
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.dexheimer.treeinspectorandroid.R
-import com.dexheimer.treeinspectorandroid.data.local.Demanda
+import com.dexheimer.treeinspectorandroid.domain.model.Demanda
+
 
 class DemandaAdapter(
 	private var demandas: List<Demanda>,
@@ -35,17 +36,20 @@ class DemandaAdapter(
 		val demanda = demandas[position]
 
 		holder.ordemTextView.text = "${position + 1}."
+		// Ajuste: logradouro, numero e bairro agora são propriedades diretas da classe Demanda (Domain)
 		holder.enderecoTextView.text = "${demanda.logradouro ?: "Endereço"} ${demanda.numero ?: ""} - ${demanda.bairro ?: ""}"
-		holder.tipoTextView.text = "Tipo: ${demanda.tipo_demanda ?: "N/D"}"
 
-		// --- LÓGICA DE STATUS (ADICIONADO) ---
-		if (demanda.status_vistoria.equals("concluida", ignoreCase = true)) {
+		// CORREÇÃO: tipo_demanda -> tipoDemanda
+		holder.tipoTextView.text = "Tipo: ${demanda.tipoDemanda ?: "N/D"}"
+
+		// CORREÇÃO: status_vistoria -> statusVistoria
+		if (demanda.statusVistoria.equals("concluida", ignoreCase = true)) {
 			holder.statusTextView.text = "Concluída"
-			holder.statusTextView.setTextColor(Color.parseColor("#1A5912")) // Verde Escuro
+			holder.statusTextView.setTextColor(Color.parseColor("#1A5912"))
 			holder.vistoriaButton.text = "Ver / Refazer Vistoria"
 		} else {
 			holder.statusTextView.text = "Pendente"
-			holder.statusTextView.setTextColor(Color.parseColor("#C62828")) // Vermelho
+			holder.statusTextView.setTextColor(Color.parseColor("#C62828"))
 			holder.vistoriaButton.text = "Iniciar Vistoria"
 		}
 
