@@ -1,69 +1,131 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="16dp"
+    android:background="@color/tree_beige_background"
     tools:context=".VistoriaActivity">
 
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Detalhes da Demanda"
-        android:textColor="#070101"
-        android:textSize="24sp"
-        android:textStyle="bold" />
-
-    <TextView
-        android:id="@+id/textViewTipoDemanda"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:textColor="#000000"
-        android:textSize="18sp"
-        tools:text="Tipo: Avaliação" />
-
-    <TextView
-        android:id="@+id/textViewEndereco"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:textColor="#000000"
-        android:textSize="18sp"
-        tools:text="Endereço: Daltro Filho, 107" />
-
-    <TextView
-        android:id="@+id/textViewBairro"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:textColor="#000000"
-        android:textSize="18sp"
-        tools:text="Bairro: Tamandaré" />
-
-    <Space
+    <androidx.appcompat.widget.Toolbar
+        android:id="@+id/toolbar"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1" />
+        android:layout_height="?attr/actionBarSize"
+        android:background="@color/tree_green_primary"
+        android:elevation="4dp"
+        android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
+        app:titleTextColor="@color/white" />
 
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="center_horizontal"
-        android:text="(Futuramente aqui vai ter um formulário)"
-        android:textStyle="italic" />
-
-    <Space
+    <ScrollView
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1" />
+        android:layout_height="match_parent"
+        android:fillViewport="true">
 
-    <Button
-        android:id="@+id/buttonFinalizarVistoria"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Finalizar Vistoria"
-        android:padding="16dp"/>
+        <LinearLayout
+            android:id="@+id/contentLayout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="24dp"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="2dp"
+                app:strokeColor="#E0E0E0"
+                app:strokeWidth="1dp"
+                android:backgroundTint="@color/white">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:text="Dados da Demanda"
+                        android:textSize="12sp"
+                        android:textColor="@color/tree_green_dark"
+                        android:textAllCaps="true"
+                        android:textStyle="bold"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="8dp"/>
+
+                    <TextView
+                        android:id="@+id/txtTipoDemanda"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        tools:text="Poda de Árvore"
+                        android:textColor="#000000"
+                        android:textSize="20sp"
+                        android:textStyle="bold"
+                        android:layout_marginBottom="4dp"/>
+
+                    <TextView
+                        android:id="@+id/txtEndereco"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        tools:text="Rua das Flores, 123"
+                        android:textSize="16sp"
+                        android:textColor="#424242"
+                        android:drawablePadding="8dp"
+                        app:drawableStartCompat="@android:drawable/ic_dialog_map"/>
+
+                    <TextView
+                        android:id="@+id/txtDescricao"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:background="#F5F5F5"
+                        android:padding="12dp"
+                        tools:text="Descrição da demanda..."
+                        android:textSize="14sp"
+                        android:textColor="#616161"
+                        android:textStyle="italic"/>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Formulário de Vistoria"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="@color/tree_brown_secondary"
+                android:layout_marginBottom="16dp"/>
+
+            <ProgressBar
+                android:id="@+id/progressBarForm"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:visibility="gone"/>
+
+            <LinearLayout
+                android:id="@+id/dynamicFormContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+
+            <Button
+                android:id="@+id/btnSalvarVistoria"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:layout_marginTop="32dp"
+                android:layout_marginBottom="24dp"
+                android:text="Concluir Vistoria"
+                android:backgroundTint="@color/tree_green_primary"
+                android:textColor="@color/white"
+                android:textStyle="bold"
+                android:textSize="16sp"
+                app:cornerRadius="8dp"
+                android:elevation="4dp"/>
+
+        </LinearLayout>
+    </ScrollView>
 
 </LinearLayout>

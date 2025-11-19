@@ -9,7 +9,8 @@
     <!-- 2. Permissão para acessar o estado da rede -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-    <!-- +++ FIM DAS CORREÇÕES +++ -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <application
         android:allowBackup="true"
@@ -60,9 +61,11 @@
         android:name=".DemandaDetalheActivity"
         android:exported="false" />
 
-    <activity
-        android:name=".VistoriaActivity"
-        android:exported="false" />
+        <activity
+            android:name=".VistoriaActivity"
+            android:label="Realizar Vistoria"
+            android:parentActivityName=".DemandaDetalheActivity" />
+
 
     <!-- +++ FIM DAS CORREÇÕES +++ -->
 

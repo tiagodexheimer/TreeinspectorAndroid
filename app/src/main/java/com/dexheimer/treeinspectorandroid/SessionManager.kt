@@ -1,4 +1,3 @@
-// app/src/main/java/com/dexheimer/treeinspectorandroid/SessionManager.kt
 package com.dexheimer.treeinspectorandroid
 
 import android.content.Context
@@ -11,15 +10,24 @@ class SessionManager(context: Context) {
 
 	companion object {
 		const val IS_LOGGED_IN = "isLoggedIn"
+		const val AUTH_COOKIE = "auth_cookie" // [NOVO]
 	}
 
-	// Salva o estado de login
 	fun setLoggedIn(isLoggedIn: Boolean) {
 		prefs.edit().putBoolean(IS_LOGGED_IN, isLoggedIn).apply()
 	}
 
-	// Verifica o estado de login
 	fun isLoggedIn(): Boolean {
 		return prefs.getBoolean(IS_LOGGED_IN, false)
+	}
+
+	// [NOVO] Salva o cookie completo
+	fun saveAuthToken(token: String) {
+		prefs.edit().putString(AUTH_COOKIE, token).apply()
+	}
+
+	// [NOVO] Recupera o cookie
+	fun getAuthToken(): String? {
+		return prefs.getString(AUTH_COOKIE, null)
 	}
 }

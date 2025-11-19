@@ -1,3 +1,4 @@
+// app/src/main/java/com/dexheimer/treeinspectorandroid/MainActivity.kt
 package com.dexheimer.treeinspectorandroid
 
 import android.content.Intent
@@ -14,13 +15,9 @@ import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
 
-	// --- LOGGING TAG ---
 	private val TAG = "MainActivity"
 
-	// Gerenciador de Sessão para "lembrar" do login
 	private lateinit var sessionManager: SessionManager
-
-	// Componentes da UI da tela de login
 	private lateinit var editTextEmail: TextInputEditText
 	private lateinit var editTextPassword: TextInputEditText
 	private lateinit var buttonLogin: Button
@@ -29,157 +26,131 @@ class MainActivity : AppCompatActivity() {
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
 
-		// 1. Inicializa o SessionManager
+		// 1. Inicializa Sessão
 		sessionManager = SessionManager(applicationContext)
 
-		// 2. Verifica se o usuário JÁ ESTÁ LOGADO
+		// 2. Se já logado, vai direto para o App
 		if (sessionManager.isLoggedIn()) {
-			Log.i(TAG, "Usuário já está logado. Pulando para o app.")
-			navigateToApp() // Pula direto para a tela de rotas
-			return // Impede que o resto do onCreate (tela de login) seja executado
+			Log.d(TAG, "Usuário já logado, redirecionando...")
+			navigateToApp()
+			return
 		}
 
-		// 3. Se não estiver logado, mostra a tela de login
+		// 3. Se não, mostra a tela de login
 		setContentView(R.layout.activity_main)
-		Log.d(TAG, "Mostrando tela de login.")
 
-		// 4. Referencia os views do layout
 		editTextEmail = findViewById(R.id.editTextEmail)
 		editTextPassword = findViewById(R.id.editTextPassword)
 		buttonLogin = findViewById(R.id.buttonLogin)
 		progressBar = findViewById(R.id.progressBar)
 
-		// 5. Define o clique do botão de login
 		buttonLogin.setOnClickListener {
 			performLogin()
 		}
 	}
 
-	/**
-	 * Inicia o processo de login em 2 etapas:
-	 * 1. Busca o token CSRF.
-	 * 2. Envia as credenciais (email, senha) + token CSRF.
-	 */
 	private fun performLogin() {
 		val email = editTextEmail.text.toString().trim()
 		val password = editTextPassword.text.toString().trim()
 
-		// --- FASE 0: VALIDAÇÃO LOCAL ---
 		if (email.isEmpty() || password.isEmpty()) {
-			Log.w(TAG, "Fase 0: FALHA - Email ou senha vazios.")
 			Toast.makeText(this, "Email e senha são obrigatórios", Toast.LENGTH_SHORT).show()
 			return
 		}
-		Log.d(TAG, "Fase 0: SUCESSO - Inputs validados.")
 
 		showLoading(true)
 
 		lifecycleScope.launch {
 			try {
-				// --- FASE 1: BUSCAR TOKEN CSRF ---
-				Log.i(TAG, "Fase 1: Buscando token CSRF...")
+				// FASE 1: Obter Token CSRF (Segurança do NextAuth)
+				Log.d(TAG, "Buscando CSRF...")
 				val csrfResponse = NetworkClient.api.getCsrfToken()
 
 				if (!csrfResponse.isSuccessful || csrfResponse.body()?.csrfToken == null) {
-
-					// ===========================================
-					// NOVO LOG DE DIAGNÓSTICO
-					// ===========================================
-					Log.e(TAG, "Fase 1: FALHA ao buscar token CSRF! Código: ${csrfResponse.code()}")
-
-					// 1. Loga o Corpo da Resposta Bruta
-					val rawBody = csrfResponse.errorBody()?.string() ?: csrfResponse.body()?.toString()
-					Log.e(TAG, "DIAGNOSE CSRF: Response Body (RAW): $rawBody")
-
-					// 2. Loga os Headers
-					Log.e(TAG, "DIAGNOSE CSRF: Headers:")
-					for (header in csrfResponse.headers().names()) {
-						Log.e(TAG, "  -> $header: ${csrfResponse.headers().get(header)}")
-					}
-					// ===========================================
-
-					throw Exception("Erro de segurança ao iniciar login (CSRF)")
+					throw Exception("Falha ao obter token de segurança.")
 				}
-
 				val csrfToken = csrfResponse.body()!!.csrfToken
-				Log.i(TAG, "Fase 1: SUCESSO - Token CSRF obtido.")
 
-				// --- FASE 2: REALIZAR O LOGIN COM O TOKEN ---
-				Log.i(TAG, "Fase 2: Enviando credenciais...")
-				val request = LoginRequest(
-					email = email,
-					password = password,
-					csrfToken = csrfToken
-				)
-
+				// FASE 2: Enviar Credenciais de Login
+				Log.d(TAG, "Enviando credenciais...")
+				val request = LoginRequest(email = email, password = password, csrfToken = csrfToken)
 				val loginResponse = NetworkClient.api.login(request)
 
-				// Se for 401 (Não autorizado), a senha está errada.
-				if (loginResponse.code() == 401) {
-					Log.w(TAG, "Fase 2: FALHA (401) - Email ou senha inválidos.")
-					throw Exception("Email ou senha inválidos (401)")
-				}
-
-				// Se for 302 (Redirecionamento)
-				if (loginResponse.code() == 302) {
-					// Verificamos se é um 302 de SUCESSO (que envia o cookie de sessão)
+				// FASE 3: Processar Resposta
+				if (loginResponse.isSuccessful) {
+					// Caso 200 OK (Raro no NextAuth padrão, mas possível)
+					Log.i(TAG, "Login bem-sucedido (200).")
+					sessionManager.setLoggedIn(true)
+					navigateToApp()
+				} else if (loginResponse.code() == 302) {
+					// Caso 302 Found (Padrão do NextAuth: Redireciona após login)
 					val cookies = loginResponse.headers().values("Set-Cookie")
-					val hasSessionCookie = cookies.any { it.startsWith("next-auth.session-token") }
 
-					if (hasSessionCookie) {
-						// SUCESSO! Este é um redirecionamento de login válido.
-						Log.i(TAG, "Fase 3: SUCESSO! Login OK (Code: 302) e Cookie de Sessão recebido.")
+					// Procura pelo cookie de sessão (suporta v4 e v5 beta do Auth.js)
+					val cookieString = cookies.find {
+						it.contains("next-auth.session-token") || it.contains("authjs.session-token")
+					}
+
+					if (cookieString != null) {
+						// SUCESSO: Cookie encontrado!
+
+						// Extrai apenas o valor "nome=token" antes do primeiro ponto-e-vírgula
+						// Isso é crucial para injetar no header depois
+						val rawToken = cookieString.split(";")[0]
+
+						// Salva o token para uso posterior no Worker (Sync)
+						sessionManager.saveAuthToken(rawToken)
+						Log.i(TAG, "Token de sessão salvo com sucesso.")
+
+						// Salva estado de login e navega
 						sessionManager.setLoggedIn(true)
 						navigateToApp()
 					} else {
-						// FALHA! Este é um redirecionamento para uma página de erro.
-						Log.w(TAG, "Fase 3: FALHA (302) - Sem cookie de sessão. Provavelmente senha errada.")
-						throw Exception("Email ou senha inválidos")
+						// Redirecionou, mas sem cookie. Verifica se foi para página de erro.
+						val location = loginResponse.headers()["Location"] ?: ""
+						if (location.contains("error")) {
+							throw Exception("Credenciais inválidas.")
+						} else {
+							// Fallback: Se redirecionou para home/callback sem erro explícito,
+							// assumimos que o CookieJar pegou o cookie automaticamente.
+							Log.w(TAG, "Redirecionamento sem cookie explícito no header, assumindo sucesso...")
+							sessionManager.setLoggedIn(true)
+							navigateToApp()
+						}
 					}
-				}
-				// Se for 200 (Sucesso direto)
-				else if (loginResponse.isSuccessful) {
-					Log.i(TAG, "Fase 3: SUCESSO! Login OK (Code: ${loginResponse.code()}).")
-					sessionManager.setLoggedIn(true)
-					navigateToApp()
-				}
-				// Qualquer outro caso é um erro.
-				else {
-					Log.e(TAG, "Fase 3: FALHA - Erro inesperado (Code: ${loginResponse.code()})")
-					throw Exception("Erro inesperado do servidor: ${loginResponse.code()}")
+				} else if (loginResponse.code() == 401) {
+					throw Exception("Email ou senha incorretos.")
+				} else {
+					throw Exception("Falha no login. Código: ${loginResponse.code()}")
 				}
 
 			} catch (e: Exception) {
-				// --- FASE 4: FALHA GERAL ---
-				Log.e(TAG, "Fase 4: FALHA GERAL (Exceção) (Ask Gemini)", e)
+				Log.e(TAG, "Erro no login: ${e.message}", e)
 				Toast.makeText(this@MainActivity, e.message ?: "Erro de conexão", Toast.LENGTH_LONG).show()
 				showLoading(false)
 			}
 		}
 	}
 
-	/**
-	 * Navega para a tela principal do app (RoutesActivity)
-	 * e fecha a tela de login (MainActivity).
-	 */
 	private fun navigateToApp() {
 		val intent = Intent(this, RoutesActivity::class.java)
 		startActivity(intent)
-		finish() // Fecha a MainActivity para que o usuário não possa "voltar" para o login
+		finish() // Fecha a tela de login para não voltar com "Voltar"
 	}
 
-	/**
-	 * Controla a visibilidade dos elementos de UI de loading.
-	 */
 	private fun showLoading(isLoading: Boolean) {
 		if (isLoading) {
 			progressBar.visibility = View.VISIBLE
 			buttonLogin.isEnabled = false
 			buttonLogin.text = "Entrando..."
+			editTextEmail.isEnabled = false
+			editTextPassword.isEnabled = false
 		} else {
 			progressBar.visibility = View.GONE
 			buttonLogin.isEnabled = true
 			buttonLogin.text = "Entrar"
+			editTextEmail.isEnabled = true
+			editTextPassword.isEnabled = true
 		}
 	}
 }
