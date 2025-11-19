@@ -8,41 +8,52 @@ import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.net.CookieManager
 import java.net.CookiePolicy
-import java.net.URL // Adicionado import
+import java.net.URL
 
 object NetworkClient {
 
-	// A URL base é lida do BuildConfig (correta para produção: https://www.treeinspector.com.br/)
+	// A URL base é lida do BuildConfig (definida no build.gradle)
 	private val BASE_URL = BuildConfig.API_BASE_URL
 
-	// EXTRAI O HOST EXATO (e.g., "www.treeinspector.com.br")
+	// Extrai o host (ex: "www.treeinspector.com.br") para usar nos headers de segurança
 	private val API_HOST = URL(BASE_URL).host
 
+	// [NOVO] Variável estática para armazenar o token de sessão temporariamente.
+	// O Worker (sincronização) vai preencher isso antes de chamar a API.
+	var authToken: String? = null
 
-	// 1. Gerenciador de Cookies para salvar a sessão do NextAuth
+	// 1. Gerenciador de Cookies (Mantém a sessão enquanto o app está aberto)
 	private val cookieManager = CookieManager().apply {
 		setCookiePolicy(CookiePolicy.ACCEPT_ALL)
 	}
 	private val cookieJar = JavaNetCookieJar(cookieManager)
 
-	// 2. Cliente OkHttp com interceptor de segurança
+	// 2. Cliente OkHttp com interceptadores
 	private val okHttpClient = OkHttpClient.Builder()
-		.cookieJar(cookieJar)
-		.followRedirects(false)
+		.cookieJar(cookieJar)       // Gerencia cookies automaticamente na sessão ativa
+		.followRedirects(false)     // Importante para capturar o 302 do Login manualmente
 		.addInterceptor(HttpLoggingInterceptor().apply {
-			level = HttpLoggingInterceptor.Level.BODY // Ótimo para debug
+			level = HttpLoggingInterceptor.Level.BODY // Logs detalhados para debug
 		})
-		// --- INÍCIO DA CORREÇÃO CRÍTICA: INJETAR HEADERS ---
 		.addInterceptor { chain ->
 			val original = chain.request()
 			val requestBuilder = original.newBuilder()
 
-			// Adiciona o cabeçalho 'Host'
+			// [NOVO] Injeção de Token Manual (Essencial para o Worker de Sincronização)
+			// Se o Worker definiu um authToken, nós o forçamos no header Cookie.
+			// Isso permite que o Worker autentique mesmo sem o CookieJar estar populado.
+			if (!authToken.isNullOrEmpty()) {
+				requestBuilder.addHeader("Cookie", authToken!!)
+			}
+
+			// --- Cabeçalhos de Segurança (Necessários para o NextAuth/CSRF) ---
+
+			// Adiciona o cabeçalho 'Host' se não existir
 			if (original.header("Host") == null) {
 				requestBuilder.header("Host", API_HOST)
 			}
 
-			// Adiciona o cabeçalho 'Origin' (essencial para CSRF)
+			// Adiciona o cabeçalho 'Origin' se não existir
 			if (original.header("Origin") == null) {
 				val origin = if (BASE_URL.startsWith("https")) "https://" else "http://"
 				requestBuilder.header("Origin", origin + API_HOST)
@@ -51,10 +62,9 @@ object NetworkClient {
 			val request = requestBuilder.build()
 			chain.proceed(request)
 		}
-		// --- FIM DA CORREÇÃO CRÍTICA ---
 		.build()
 
-	// 3. Instância do Retrofit
+	// 3. Instância do Retrofit (Singleton)
 	val api: ApiService by lazy {
 		Retrofit.Builder()
 			.baseUrl(BASE_URL)

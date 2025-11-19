@@ -23,39 +23,50 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import androidx.work.Constraints
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
 import com.google.android.material.switchmaterial.SwitchMaterial
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class VistoriaActivity : AppCompatActivity() {
 
-	// Referências de UI
+	// --- UI Components ---
 	private lateinit var dynamicFormContainer: LinearLayout
 	private lateinit var btnSalvar: Button
 	private lateinit var progressBar: ProgressBar
 
-	// Referências dos campos de texto estáticos
 	private lateinit var txtTipoDemanda: TextView
 	private lateinit var txtEndereco: TextView
 	private lateinit var txtDescricao: TextView
 
-	// Dados e Controle
+	// --- Dados e Estado ---
 	private var demandaAtual: Demanda? = null
 	private val formViews = mutableMapOf<String, View>()
 	private val fieldDefinitions = mutableListOf<FormField>()
+	private lateinit var db: AppDatabase // Banco de dados local
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
 		setContentView(R.layout.activity_vistoria)
 
-		// 1. Configurar a Toolbar
+		// 1. Inicializar Banco de Dados
+		db = AppDatabase.getInstance(applicationContext)
+
+		// 2. Configurar Toolbar
 		val toolbar: androidx.appcompat.widget.Toolbar = findViewById(R.id.toolbar)
 		setSupportActionBar(toolbar)
 		supportActionBar?.setDisplayHomeAsUpEnabled(true)
 		supportActionBar?.title = "Realizar Vistoria"
 
-		// 2. Inicializar Componentes de UI
+		// 3. Inicializar UI
 		dynamicFormContainer = findViewById(R.id.dynamicFormContainer)
 		btnSalvar = findViewById(R.id.btnSalvarVistoria)
 		progressBar = findViewById(R.id.progressBarForm)
@@ -64,70 +75,96 @@ class VistoriaActivity : AppCompatActivity() {
 		txtEndereco = findViewById(R.id.txtEndereco)
 		txtDescricao = findViewById(R.id.txtDescricao)
 
-		// 3. Recuperar a Demanda passada via Intent
+		// 4. Recuperar Demanda
 		demandaAtual = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
 			intent.getSerializableExtra("DEMANDA_EXTRA", Demanda::class.java)
 		} else {
 			intent.getSerializableExtra("DEMANDA_EXTRA") as? Demanda
 		}
 
-		// 4. Preencher Dados e Iniciar Busca
+		// 5. Preencher Dados e Buscar Formulário
 		if (demandaAtual != null) {
 			txtTipoDemanda.text = demandaAtual?.tipo_demanda ?: "Não informado"
 			txtEndereco.text = "${demandaAtual?.logradouro ?: ""}, ${demandaAtual?.numero ?: ""}\n${demandaAtual?.bairro ?: ""}"
 			txtDescricao.text = demandaAtual?.descricao ?: "Sem descrição."
 
-			// Inicia a busca do formulário
 			buscarFormulario(demandaAtual!!.tipo_demanda ?: "")
 		} else {
-			Toast.makeText(this, "Erro crítico: Dados da demanda não encontrados.", Toast.LENGTH_LONG).show()
+			Toast.makeText(this, "Erro crítico: Dados não encontrados.", Toast.LENGTH_LONG).show()
 			finish()
 		}
 
-		// 5. Configurar Botão de Salvar
+		// 6. Ação do Botão Salvar
 		btnSalvar.setOnClickListener {
 			salvarVistoria()
 		}
 	}
 
-	// --- LÓGICA DE BUSCA DO FORMULÁRIO ---
+	// --- LÓGICA DE BUSCA (ONLINE + OFFLINE FALLBACK) ---
 
 	private fun buscarFormulario(tipoDemanda: String) {
 		showLoading(true)
 		dynamicFormContainer.removeAllViews()
 
 		lifecycleScope.launch {
+			var campos: List<FormField>? = null
+
+			// 1. Tenta buscar da API (Online)
 			try {
-				Log.d("VistoriaActivity", "Buscando formulário para: $tipoDemanda")
+				Log.d("VistoriaActivity", "Tentando buscar formulário online para: $tipoDemanda")
 				val response = NetworkClient.api.getFormularioPorTipo(tipoDemanda)
-
 				if (response.isSuccessful && response.body() != null) {
-					val campos = response.body()!!
-
-					fieldDefinitions.clear()
-					fieldDefinitions.addAll(campos)
-
-					if (campos.isEmpty()) {
-						mostrarMensagemNoContainer("Nenhum formulário configurado para este tipo de demanda ($tipoDemanda).")
-						btnSalvar.isEnabled = false
-					} else {
-						renderDynamicForm(campos)
-						btnSalvar.isEnabled = true
-					}
-				} else {
-					Log.e("VistoriaActivity", "Erro API: ${response.code()}")
-					mostrarMensagemNoContainer("Erro ao carregar formulário. Código: ${response.code()}")
+					campos = response.body()
+					// Opcional: Atualizar o cache com a versão mais nova
+					salvarFormularioNoCache(tipoDemanda, campos!!)
 				}
 			} catch (e: Exception) {
-				Log.e("VistoriaActivity", "Erro de Rede", e)
-				mostrarMensagemNoContainer("Falha na conexão. Verifique sua internet.")
-			} finally {
-				showLoading(false)
+				Log.w("VistoriaActivity", "Sem conexão ou erro na API. Tentando cache local...")
+			}
+
+			// 2. Se falhou (null), busca do Banco Local (Offline)
+			if (campos == null) {
+				val jsonCache = withContext(Dispatchers.IO) {
+					db.formularioDao().getFormularioJson(tipoDemanda)
+				}
+
+				if (jsonCache != null) {
+					try {
+						val listType = object : TypeToken<List<FormField>>() {}.type
+						campos = Gson().fromJson(jsonCache, listType)
+						Toast.makeText(this@VistoriaActivity, "Modo Offline: Formulário carregado.", Toast.LENGTH_SHORT).show()
+					} catch (e: Exception) {
+						Log.e("VistoriaActivity", "Erro ao ler cache do formulário", e)
+					}
+				}
+			}
+
+			// 3. Renderiza ou mostra erro
+			if (campos != null && campos.isNotEmpty()) {
+				fieldDefinitions.clear()
+				fieldDefinitions.addAll(campos)
+				renderDynamicForm(campos)
+				btnSalvar.isEnabled = true
+			} else {
+				mostrarMensagemNoContainer("Formulário não disponível (Offline e sem cache).")
+				btnSalvar.isEnabled = false
+			}
+			showLoading(false)
+		}
+	}
+
+	private suspend fun salvarFormularioNoCache(tipo: String, campos: List<FormField>) {
+		withContext(Dispatchers.IO) {
+			try {
+				val json = Gson().toJson(campos)
+				db.formularioDao().salvarFormulario(FormularioCache(tipo, json))
+			} catch (e: Exception) {
+				Log.e("VistoriaActivity", "Erro ao salvar cache do formulário", e)
 			}
 		}
 	}
 
-	// --- LÓGICA DE RENDERIZAÇÃO DINÂMICA ---
+	// --- RENDERIZAÇÃO DINÂMICA ---
 
 	private fun renderDynamicForm(campos: List<FormField>) {
 		formViews.clear()
@@ -135,37 +172,28 @@ class VistoriaActivity : AppCompatActivity() {
 		for (campo in campos) {
 			when (campo.type) {
 				"textarea", "text" -> renderTextField(campo)
-				"radio" -> renderRadioGroup(campo)      // Apenas Radio
-				"select" -> renderSpinner(campo)        // Novo Spinner para Select
-				"switch" -> renderSwitch(campo)         // Apenas Switch
-				"checkbox" -> renderCheckbox(campo)     // Novo Checkbox
-				else -> Log.w("VistoriaActivity", "Tipo de campo desconhecido: ${campo.type}")
+				"radio" -> renderRadioGroup(campo)
+				"select" -> renderSpinner(campo)
+				"switch" -> renderSwitch(campo)
+				"checkbox" -> renderCheckbox(campo)
+				else -> Log.w("VistoriaActivity", "Tipo desconhecido: ${campo.type}")
 			}
 
-			// Espaçamento entre campos
+			// Espaçamento
 			val spacer = View(this)
-			spacer.layoutParams = LinearLayout.LayoutParams(
-				LinearLayout.LayoutParams.MATCH_PARENT,
-				48
-			)
+			spacer.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 48)
 			dynamicFormContainer.addView(spacer)
 		}
 	}
 
 	private fun renderTextField(campo: FormField) {
 		val textInputLayout = TextInputLayout(this)
-		textInputLayout.layoutParams = LinearLayout.LayoutParams(
-			LinearLayout.LayoutParams.MATCH_PARENT,
-			LinearLayout.LayoutParams.WRAP_CONTENT
-		)
+		textInputLayout.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
 		textInputLayout.hint = campo.label
 		textInputLayout.boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_OUTLINE
 
 		val editText = TextInputEditText(textInputLayout.context)
-		editText.layoutParams = LinearLayout.LayoutParams(
-			LinearLayout.LayoutParams.MATCH_PARENT,
-			LinearLayout.LayoutParams.WRAP_CONTENT
-		)
+		editText.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
 
 		if (campo.type == "textarea") {
 			editText.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
@@ -204,7 +232,6 @@ class VistoriaActivity : AppCompatActivity() {
 		formViews[campo.name] = radioGroup
 	}
 
-	// --- NOVO: RENDERIZAÇÃO DO SPINNER (LISTA SUSPENSA) ---
 	private fun renderSpinner(campo: FormField) {
 		val labelView = TextView(this)
 		labelView.text = campo.label
@@ -215,10 +242,7 @@ class VistoriaActivity : AppCompatActivity() {
 		dynamicFormContainer.addView(labelView)
 
 		val spinner = Spinner(this)
-		spinner.layoutParams = LinearLayout.LayoutParams(
-			LinearLayout.LayoutParams.MATCH_PARENT,
-			LinearLayout.LayoutParams.WRAP_CONTENT
-		)
+		spinner.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
 
 		val opcoesLista = mutableListOf("Selecione...")
 		val valoresLista = mutableListOf("")
@@ -231,7 +255,7 @@ class VistoriaActivity : AppCompatActivity() {
 		val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, opcoesLista)
 		adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
 		spinner.adapter = adapter
-		spinner.tag = valoresLista // Guarda os valores técnicos na tag
+		spinner.tag = valoresLista
 
 		dynamicFormContainer.addView(spinner)
 		formViews[campo.name] = spinner
@@ -241,13 +265,9 @@ class VistoriaActivity : AppCompatActivity() {
 		val switchView = SwitchMaterial(this)
 		switchView.text = campo.label
 		switchView.textSize = 16f
-		switchView.layoutParams = LinearLayout.LayoutParams(
-			LinearLayout.LayoutParams.MATCH_PARENT,
-			LinearLayout.LayoutParams.WRAP_CONTENT
-		)
+		switchView.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
 
-		val defValue = campo.defaultValue.toString()
-		if (defValue == "true") {
+		if (campo.defaultValue.toString() == "true") {
 			switchView.isChecked = true
 		}
 
@@ -255,19 +275,14 @@ class VistoriaActivity : AppCompatActivity() {
 		formViews[campo.name] = switchView
 	}
 
-	// --- NOVO: RENDERIZAÇÃO DO CHECKBOX ---
 	private fun renderCheckbox(campo: FormField) {
 		val checkBox = CheckBox(this)
 		checkBox.text = campo.label
 		checkBox.textSize = 16f
 		checkBox.setTextColor(Color.BLACK)
-		checkBox.layoutParams = LinearLayout.LayoutParams(
-			LinearLayout.LayoutParams.MATCH_PARENT,
-			LinearLayout.LayoutParams.WRAP_CONTENT
-		)
+		checkBox.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
 
-		val defValue = campo.defaultValue.toString()
-		if (defValue == "true") {
+		if (campo.defaultValue.toString() == "true") {
 			checkBox.isChecked = true
 		}
 
@@ -275,9 +290,10 @@ class VistoriaActivity : AppCompatActivity() {
 		formViews[campo.name] = checkBox
 	}
 
-	// --- LÓGICA DE SALVAR ---
+	// --- LÓGICA DE SALVAR (ONLINE + OFFLINE QUEUE) ---
 
 	private fun salvarVistoria() {
+		// 1. Coletar Respostas
 		val respostas = HashMap<String, Any>()
 
 		for (campo in fieldDefinitions) {
@@ -285,8 +301,7 @@ class VistoriaActivity : AppCompatActivity() {
 			if (view != null) {
 				when (campo.type) {
 					"textarea", "text" -> {
-						val text = (view as EditText).text.toString()
-						respostas[campo.name] = text
+						respostas[campo.name] = (view as EditText).text.toString()
 					}
 					"radio" -> {
 						val rg = view as RadioGroup
@@ -299,11 +314,9 @@ class VistoriaActivity : AppCompatActivity() {
 						}
 					}
 					"select" -> {
-						// Lógica para recuperar valor do Spinner
 						val spinner = view as Spinner
 						val position = spinner.selectedItemPosition
 						val valores = spinner.tag as List<String>
-
 						if (position > 0 && position < valores.size) {
 							respostas[campo.name] = valores[position]
 						} else {
@@ -321,42 +334,84 @@ class VistoriaActivity : AppCompatActivity() {
 
 		showLoading(true)
 		btnSalvar.isEnabled = false
-		btnSalvar.text = "Enviando..."
+		btnSalvar.text = "Salvando..."
 
 		lifecycleScope.launch {
+			var salvouOnline = false
+
+			// 2. Tentar Enviar Online Primeiro
 			try {
-				val request = VistoriaRequest(
-					demandaId = demandaAtual!!.id,
-					respostas = respostas
-				)
-
-				Log.d("VistoriaActivity", "Enviando vistoria: $request")
-
+				val request = VistoriaRequest(demandaAtual!!.id, respostas)
 				val response = NetworkClient.api.salvarVistoria(request)
-
 				if (response.isSuccessful) {
-					Toast.makeText(this@VistoriaActivity, "Vistoria salva com sucesso!", Toast.LENGTH_LONG).show()
-
-					val resultIntent = android.content.Intent()
-					resultIntent.putExtra("NOVO_STATUS", "concluido")
-					resultIntent.putExtra("DEMANDA_ID", demandaAtual?.id)
-					setResult(Activity.RESULT_OK, resultIntent)
-
-					finish()
-				} else {
-					Log.e("VistoriaActivity", "Erro API ao salvar: ${response.code()}")
-					Toast.makeText(this@VistoriaActivity, "Erro ao salvar: ${response.code()}", Toast.LENGTH_LONG).show()
-					resetarBotoes()
+					salvouOnline = true
 				}
 			} catch (e: Exception) {
-				Log.e("VistoriaActivity", "Erro de Rede ao salvar", e)
-				Toast.makeText(this@VistoriaActivity, "Erro de conexão. Tente novamente.", Toast.LENGTH_LONG).show()
-				resetarBotoes()
+				Log.w("VistoriaActivity", "Falha envio online: ${e.message}")
+			}
+
+			if (salvouOnline) {
+				finalizarComSucesso("Vistoria enviada com sucesso!", "concluido")
+			} else {
+				// 3. Salvar na Fila Offline se falhar
+				salvarLocalmenteParaSincronizar(respostas)
 			}
 		}
 	}
 
-	// --- HELPERS UI ---
+	private suspend fun salvarLocalmenteParaSincronizar(respostas: Map<String, Any>) {
+		try {
+			val gson = Gson()
+			val jsonRespostas = gson.toJson(respostas)
+
+			val vistoriaPendente = VistoriaPendente(
+				demandaId = demandaAtual!!.id,
+				jsonRespostas = jsonRespostas
+			)
+
+			withContext(Dispatchers.IO) {
+				// Salva na fila
+				db.vistoriaDao().adicionarFila(vistoriaPendente)
+
+				// Atualiza status local para usuário não fazer de novo
+				// Usamos um status especial para indicar que falta sync
+				db.demandaDao().updateStatus(demandaAtual!!.id, "concluido_pendente")
+			}
+
+			// Agenda o Worker para rodar quando tiver internet
+			agendarSincronizacao()
+
+			finalizarComSucesso("Salvo offline. Será sincronizado automaticamente.", "concluido_pendente")
+
+		} catch (e: Exception) {
+			Log.e("VistoriaActivity", "Erro crítico ao salvar localmente", e)
+			Toast.makeText(this, "Erro ao salvar dados. Tente novamente.", Toast.LENGTH_LONG).show()
+			resetarBotoes()
+		}
+	}
+
+	private fun agendarSincronizacao() {
+		val constraints = Constraints.Builder()
+			.setRequiredNetworkType(NetworkType.CONNECTED)
+			.build()
+
+		val syncRequest = OneTimeWorkRequestBuilder<SyncVistoriasWorker>()
+			.setConstraints(constraints)
+			.build()
+
+		WorkManager.getInstance(applicationContext).enqueue(syncRequest)
+	}
+
+	private fun finalizarComSucesso(msg: String, novoStatus: String) {
+		Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+		val resultIntent = android.content.Intent()
+		resultIntent.putExtra("NOVO_STATUS", novoStatus)
+		resultIntent.putExtra("DEMANDA_ID", demandaAtual?.id)
+		setResult(Activity.RESULT_OK, resultIntent)
+		finish()
+	}
+
+	// --- HELPERS ---
 
 	private fun showLoading(isLoading: Boolean) {
 		progressBar.visibility = if (isLoading) View.VISIBLE else View.GONE
