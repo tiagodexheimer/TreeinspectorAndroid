@@ -30,14 +30,20 @@ import com.dexheimer.treeinspectorandroid.R
 import com.dexheimer.treeinspectorandroid.data.remote.FormField
 import com.dexheimer.treeinspectorandroid.domain.model.Demanda
 import com.dexheimer.treeinspectorandroid.domain.usecase.SaveResult
+import com.dexheimer.treeinspectorandroid.presentation.vistoria.form.FormRendererFactory
 import com.google.android.material.switchmaterial.SwitchMaterial
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 @AndroidEntryPoint // <--- HILT: Ponto de entrada
 class VistoriaActivity : AppCompatActivity() {
+
+	// NOVO: Injetar a Fábrica de Renderizadores (Hilt faz a mágica)
+	@Inject
+	lateinit var rendererFactory: FormRendererFactory
 
 	// --- Injeção do ViewModel ---
 	private val viewModel: VistoriaViewModel by viewModels()
@@ -158,39 +164,20 @@ class VistoriaActivity : AppCompatActivity() {
 
 	// --- LÓGICA DE COLETA DE DADOS ---
 
+// Em VistoriaActivity.kt
+
 	private fun coletarRespostas(): Map<String, Any> {
 		val respostas = HashMap<String, Any>()
 
+		// O loop foi simplificado, a responsabilidade de coleta está nos Renderers.
 		for (campo in fieldDefinitions) {
 			val view = formViews[campo.name]
-			if (view != null) {
-				when (campo.type) {
-					"textarea", "text" -> {
-						respostas[campo.name] = (view as EditText).text.toString()
-					}
-					"radio" -> {
-						val rg = view as RadioGroup
-						val selectedId = rg.checkedRadioButtonId
-						if (selectedId != -1) {
-							val rb = rg.findViewById<RadioButton>(selectedId)
-							respostas[campo.name] = rb.tag.toString()
-						} else {
-							respostas[campo.name] = ""
-						}
-					}
-					"select" -> {
-						val spinner = view as Spinner
-						val position = spinner.selectedItemPosition
-						val valores = spinner.tag as List<String>
-						if (position > 0 && position < valores.size) {
-							respostas[campo.name] = valores[position]
-						} else {
-							respostas[campo.name] = ""
-						}
-					}
-					"switch", "checkbox" -> {
-						respostas[campo.name] = (view as CompoundButton).isChecked
-					}
+			val renderer = rendererFactory.getRenderer(campo.type)
+
+			if (view != null && renderer != null) {
+				val resposta = renderer.collectResponse(view, campo)
+				if (resposta != null) {
+					respostas[campo.name] = resposta
 				}
 			}
 		}
@@ -199,23 +186,22 @@ class VistoriaActivity : AppCompatActivity() {
 
 	// --- LÓGICA DE RENDERIZAÇÃO (Mantida na View) ---
 
+// Em VistoriaActivity.kt
+
 	private fun renderDynamicForm(campos: List<FormField>) {
 		dynamicFormContainer.removeAllViews()
 		formViews.clear()
 
+		// O loop foi simplificado, a responsabilidade de renderizar está nos Renderers.
 		for (campo in campos) {
-			when (campo.type) {
-				"textarea", "text" -> renderTextField(campo)
-				"radio" -> renderRadioGroup(campo)
-				"select" -> renderSpinner(campo)
-				"switch" -> renderSwitch(campo)
-				"checkbox" -> renderCheckbox(campo)
+			val renderer = rendererFactory.getRenderer(campo.type)
+			if (renderer != null) {
+				val view = renderer.render(this, campo, dynamicFormContainer)
+				formViews[campo.name] = view
 			}
-
-			val spacer = View(this)
-			spacer.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 48)
-			dynamicFormContainer.addView(spacer)
 		}
+		// Remove a lógica de espaçador que estava no final do loop original
+		// (A lógica de espaçamento foi movida para dentro de cada Renderer)
 	}
 
 	private fun renderTextField(campo: FormField) {

@@ -1,11 +1,11 @@
 package com.dexheimer.treeinspectorandroid.presentation.demandas
 
-import android.graphics.Color
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.TextView
+import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
 import com.dexheimer.treeinspectorandroid.R
 import com.dexheimer.treeinspectorandroid.domain.model.Demanda
@@ -45,11 +45,13 @@ class DemandaAdapter(
 		// CORREÇÃO: status_vistoria -> statusVistoria
 		if (demanda.statusVistoria.equals("concluida", ignoreCase = true)) {
 			holder.statusTextView.text = "Concluída"
-			holder.statusTextView.setTextColor(Color.parseColor("#1A5912"))
+			// CORREÇÃO: Usar o recurso de cor
+			holder.statusTextView.setTextColor(ContextCompat.getColor(holder.itemView.context, R.color.status_concluido))
 			holder.vistoriaButton.text = "Ver / Refazer Vistoria"
 		} else {
 			holder.statusTextView.text = "Pendente"
-			holder.statusTextView.setTextColor(Color.parseColor("#C62828"))
+			// CORREÇÃO: Usar o recurso de cor
+			holder.statusTextView.setTextColor(ContextCompat.getColor(holder.itemView.context, R.color.status_pendente))
 			holder.vistoriaButton.text = "Iniciar Vistoria"
 		}
 

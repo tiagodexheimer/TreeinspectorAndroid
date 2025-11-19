@@ -4,6 +4,10 @@
     <color name="white">#FFFFFFFF</color>
 
     <color name="tree_green_primary">#257e1a</color>
-    <color name="tree_green_dark">#1a5912</color> <color name="tree_brown_secondary">#714b42</color>
+    <color name="tree_green_dark">#1a5912</color>
+    <color name="tree_brown_secondary">#714b42</color>
     <color name="tree_beige_background">#F5F5DC</color>
+
+    <color name="status_concluido">#1A5912</color>
+    <color name="status_pendente">#C62828</color>
 </resources>

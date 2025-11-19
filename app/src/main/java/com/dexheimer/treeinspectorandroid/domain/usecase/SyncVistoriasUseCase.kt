@@ -27,11 +27,6 @@ class SyncVistoriasUseCase @Inject constructor(
 			return Result.failure(Exception("Token de sessão ausente."))
 		}
 
-		// CRÍTICO: No sistema atual, o NetworkClient precisa ser alimentado manualmente pelo Worker.
-		// Se estivermos usando a versão Hilt/OkHttp que configurei, o token é injetado pelo CookieJar no login,
-		// mas para garantir o Worker, vamos manter o token manual por enquanto:
-		// com.dexheimer.treeinspectorandroid.data.remote.NetworkClient.authToken = token
-
 		val pendentes = vistoriaDao.getTodasPendentes()
 		if (pendentes.isEmpty()) return Result.success(true)
 
