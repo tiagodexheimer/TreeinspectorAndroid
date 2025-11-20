@@ -1,9 +1,17 @@
 package com.dexheimer.treeinspectorandroid.presentation.rotas
 
+import android.Manifest
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.location.LocationManager
 import android.net.Uri
 import android.os.Bundle
+import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
@@ -20,19 +28,34 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.dexheimer.treeinspectorandroid.R
 import com.dexheimer.treeinspectorandroid.domain.model.Demanda
-import com.dexheimer.treeinspectorandroid.presentation.demandas.DemandaDetalheActivity
 import com.dexheimer.treeinspectorandroid.presentation.demandas.DemandaListActivity
+import com.dexheimer.treeinspectorandroid.presentation.vistoria.VistoriaActivity
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONObject
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.util.BoundingBox
 import org.osmdroid.util.GeoPoint
+import org.osmdroid.views.CustomZoomButtonsController
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
+import org.osmdroid.views.overlay.Polyline
+import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
+import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
+import javax.inject.Inject
 
-@AndroidEntryPoint // Injeção do Hilt
+@AndroidEntryPoint
 class RotaDetalheActivity : AppCompatActivity() {
+
+	@Inject
+	lateinit var okHttpClient: OkHttpClient
 
 	private val viewModel: RotaDetalheViewModel by viewModels()
 
@@ -47,11 +70,15 @@ class RotaDetalheActivity : AppCompatActivity() {
 	private lateinit var btnIniciarVistoria: Button
 	private lateinit var btnVerTodasDemandas: Button
 
-	// Estado Local (apenas para controle de mapa/navegação)
+	// Overlays
+	private var locationOverlay: MyLocationNewOverlay? = null
+	private var routeLine: Polyline? = null
+	private var rotaJob: Job? = null // Para controlar o cancelamento de requisições antigas
+
+	// Estado Local
 	private var proximaDemanda: Demanda? = null
 	private var rotaId: Int = -1
 
-	// Launcher Vistoria
 	private val vistoriaLauncher = registerForActivityResult(
 		ActivityResultContracts.StartActivityForResult()
 	) { result ->
@@ -64,23 +91,39 @@ class RotaDetalheActivity : AppCompatActivity() {
 		}
 	}
 
-	// Launcher Lista
 	private val demandaListLauncher = registerForActivityResult(
 		ActivityResultContracts.StartActivityForResult()
 	) { result ->
 		if (result.resultCode == Activity.RESULT_OK) {
-			viewModel.carregarDados() // Recarrega se voltou da lista
+			viewModel.carregarDados()
+		}
+	}
+
+	private val requestPermissionLauncher = registerForActivityResult(
+		ActivityResultContracts.RequestMultiplePermissions()
+	) { permissions ->
+		if (permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+			permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+		) {
+			setupLocationOverlay()
+		} else {
+			Toast.makeText(this, "Permissão de localização necessária para mostrar a rota.", Toast.LENGTH_LONG).show()
 		}
 	}
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
 		Configuration.getInstance().load(applicationContext, getSharedPreferences("osmdroid", MODE_PRIVATE))
+
+		// Configura User-Agent global para o OSMDroid (Evita bloqueios de tiles)
+		Configuration.getInstance().userAgentValue = packageName
+
 		setContentView(R.layout.activity_rota_detalhe)
 
 		rotaId = intent.getIntExtra("ROTA_ID", -1)
 
 		setupUI()
+		checkLocationPermissions()
 		observarViewModel()
 	}
 
@@ -91,7 +134,7 @@ class RotaDetalheActivity : AppCompatActivity() {
 
 		mapView = findViewById(R.id.mapView)
 		mapView.setTileSource(TileSourceFactory.MAPNIK)
-		mapView.setBuiltInZoomControls(true)
+		mapView.zoomController.setVisibility(CustomZoomButtonsController.Visibility.SHOW_AND_FADEOUT)
 		mapView.setMultiTouchControls(true)
 
 		fabIniciarRota = findViewById(R.id.fabIniciarRota)
@@ -103,26 +146,60 @@ class RotaDetalheActivity : AppCompatActivity() {
 		btnVerTodasDemandas = findViewById(R.id.btnVerTodasDemandas)
 
 		fabIniciarRota.setOnClickListener { iniciarRotaGoogleMaps() }
-		btnIniciarVistoria.setOnClickListener { abrirDetalheProximaDemanda() }
+		btnIniciarVistoria.setOnClickListener { abrirVistoriaProximaDemanda() }
 		btnVerTodasDemandas.setOnClickListener { abrirListaDeDemandas() }
+	}
+
+	private fun setupLocationOverlay() {
+		val provider = GpsMyLocationProvider(this)
+		provider.addLocationSource(LocationManager.GPS_PROVIDER)
+		provider.addLocationSource(LocationManager.NETWORK_PROVIDER)
+
+		locationOverlay = MyLocationNewOverlay(provider, mapView)
+		locationOverlay?.enableMyLocation()
+
+		// Ícone de navegação
+		val bitmapNavegacao = getBitmapFromVectorDrawable(R.drawable.ic_navigation)
+		if (bitmapNavegacao != null) {
+			locationOverlay?.setPersonIcon(bitmapNavegacao)
+			locationOverlay?.setDirectionIcon(bitmapNavegacao)
+		}
+
+		mapView.overlays.add(locationOverlay)
+
+		// Quando tiver a primeira localização, atualiza o mapa para desenhar a linha
+		locationOverlay?.runOnFirstFix {
+			runOnUiThread {
+				viewModel.uiState.value.let { state ->
+					atualizarMapa(state.demandasPendentes)
+				}
+			}
+		}
+		mapView.invalidate()
+	}
+
+	private fun checkLocationPermissions() {
+		if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+			ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+		) {
+			setupLocationOverlay()
+		} else {
+			requestPermissionLauncher.launch(
+				arrayOf(
+					Manifest.permission.ACCESS_FINE_LOCATION,
+					Manifest.permission.ACCESS_COARSE_LOCATION
+				)
+			)
+		}
 	}
 
 	private fun observarViewModel() {
 		lifecycleScope.launch {
 			repeatOnLifecycle(Lifecycle.State.STARTED) {
 				viewModel.uiState.collect { state ->
-					if (state.isLoading) {
-						// Mostrar loading...
-						tituloProximaParada.text = "Carregando..."
-					}
-
-					if (state.error != null) {
-						Toast.makeText(this@RotaDetalheActivity, state.error, Toast.LENGTH_LONG).show()
-					}
-
-					state.rota?.let {
-						supportActionBar?.title = it.nome
-					}
+					if (state.isLoading) tituloProximaParada.text = "Carregando..."
+					if (state.error != null) Toast.makeText(this@RotaDetalheActivity, state.error, Toast.LENGTH_LONG).show()
+					state.rota?.let { supportActionBar?.title = it.nome }
 
 					atualizarCardProxima(state.demandasPendentes)
 					atualizarMapa(state.demandasPendentes)
@@ -133,7 +210,6 @@ class RotaDetalheActivity : AppCompatActivity() {
 
 	private fun atualizarCardProxima(pendentes: List<Demanda>) {
 		if (pendentes.isEmpty()) {
-			// Rota Concluída
 			tituloProximaParada.text = "Rota Concluída"
 			enderecoProximaParada.text = "Todas as vistorias realizadas."
 			descricaoProximaParada.visibility = View.GONE
@@ -143,12 +219,10 @@ class RotaDetalheActivity : AppCompatActivity() {
 		} else {
 			proximaDemanda = pendentes.first()
 			tituloProximaParada.text = "Próxima Parada"
-
 			val end = StringBuilder()
 			proximaDemanda?.logradouro?.let { end.append(it) }
 			proximaDemanda?.numero?.let { end.append(", $it") }
 			enderecoProximaParada.text = end.toString()
-
 			descricaoProximaParada.text = proximaDemanda?.descricao ?: ""
 			descricaoProximaParada.visibility = View.VISIBLE
 			btnIniciarVistoria.visibility = View.VISIBLE
@@ -157,8 +231,15 @@ class RotaDetalheActivity : AppCompatActivity() {
 	}
 
 	private fun atualizarMapa(demandas: List<Demanda>) {
-		mapView.overlays.clear()
+		// 1. Cancelar busca de rota anterior se houver (evita piscar ou linhas erradas)
+		rotaJob?.cancel()
 
+		// 2. Limpeza de overlays (mantendo localização)
+		val overlaysParaManter = mapView.overlays.filter { it is MyLocationNewOverlay }
+		mapView.overlays.clear()
+		mapView.overlays.addAll(overlaysParaManter)
+
+		// 3. Adiciona Marcadores
 		demandas.forEachIndexed { index, demanda ->
 			if (demanda.lat != null && demanda.lng != null) {
 				val point = GeoPoint(demanda.lat, demanda.lng)
@@ -167,24 +248,116 @@ class RotaDetalheActivity : AppCompatActivity() {
 				marker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
 				marker.title = "Parada ${index + 1}"
 
-				// Ícone verde para a próxima, azul para as outras
-				val iconRes = if(index == 0) R.drawable.ic_marker_green else R.drawable.ic_marker_blue
+				val iconRes = if (index == 0) R.drawable.ic_marker_red else R.drawable.ic_marker_blue
 				marker.icon = ContextCompat.getDrawable(this, iconRes)
-
 				mapView.overlays.add(marker)
 			}
 		}
 
-		// Centralizar mapa na próxima demanda
-		if (proximaDemanda?.lat != null && proximaDemanda?.lng != null) {
-			val foco = GeoPoint(proximaDemanda!!.lat!!, proximaDemanda!!.lng!!)
+		// 4. Lógica da Linha (Rota)
+		val userLocation = locationOverlay?.myLocation
+		val nextPoint = if (proximaDemanda?.lat != null && proximaDemanda?.lng != null) {
+			GeoPoint(proximaDemanda!!.lat!!, proximaDemanda!!.lng!!)
+		} else null
+
+		if (userLocation != null && nextPoint != null) {
+
+			// Cria uma linha temporária (reta) enquanto baixa a detalhada
+			val linhaReta = Polyline().apply {
+				addPoint(userLocation)
+				addPoint(nextPoint)
+				outlinePaint.color = Color.GRAY
+				outlinePaint.strokeWidth = 5f
+				// Opcional: fazer pontilhada se quiser indicar que é temporária
+			}
+			mapView.overlays.add(linhaReta)
+
+			// Inicia busca da rota real em background
+			rotaJob = lifecycleScope.launch {
+				val pontosRota = fetchRoutePoints(userLocation, nextPoint)
+
+				// Remove a linha reta temporária
+				mapView.overlays.remove(linhaReta)
+
+				if (pontosRota.isNotEmpty()) {
+					// SUCESSO: Desenha rota detalhada
+					routeLine = Polyline().apply {
+						setPoints(pontosRota)
+						outlinePaint.color = Color.parseColor("#4285F4") // Azul
+						outlinePaint.strokeWidth = 15f
+						outlinePaint.strokeCap = Paint.Cap.ROUND
+						outlinePaint.isAntiAlias = true
+					}
+					mapView.overlays.add(routeLine)
+				} else {
+					// FALHA: Desenha a linha reta novamente (Fallback) mas com a cor oficial
+					val linhaFallback = Polyline().apply {
+						addPoint(userLocation)
+						addPoint(nextPoint)
+						outlinePaint.color = Color.parseColor("#4285F4")
+						outlinePaint.strokeWidth = 10f
+					}
+					mapView.overlays.add(linhaFallback)
+				}
+				mapView.invalidate()
+			}
+
+			// Enquadramento
+			val points = arrayListOf(userLocation, nextPoint)
+			val boundingBox = BoundingBox.fromGeoPoints(points)
+			mapView.zoomToBoundingBox(boundingBox, true, 200)
+
+		} else if (nextPoint != null) {
 			mapView.controller.setZoom(18.0)
-			mapView.controller.setCenter(foco)
+			mapView.controller.setCenter(nextPoint)
+		} else if (userLocation != null) {
+			mapView.controller.setZoom(18.0)
+			mapView.controller.animateTo(userLocation)
 		}
+
 		mapView.invalidate()
 	}
 
-	// --- Navegação e Ações ---
+	// --- LÓGICA DE ROTEAMENTO (OSRM) ---
+	private suspend fun fetchRoutePoints(start: GeoPoint, end: GeoPoint): List<GeoPoint> = withContext(Dispatchers.IO) {
+		val points = mutableListOf<GeoPoint>()
+		try {
+			// URL da API pública do OSRM
+			val url = "https://router.project-osrm.org/route/v1/driving/${start.longitude},${start.latitude};${end.longitude},${end.latitude}?overview=full&geometries=geojson"
+
+			val request = Request.Builder()
+				.url(url)
+				.header("User-Agent", "TreeInspectorAndroid/1.0") // IMPORTANTE: Header adicionado
+				.build()
+
+			val response = okHttpClient.newCall(request).execute()
+
+			if (response.isSuccessful) {
+				val jsonResponse = response.body?.string()
+				if (jsonResponse != null) {
+					val jsonObject = JSONObject(jsonResponse)
+					val routes = jsonObject.optJSONArray("routes")
+					if (routes != null && routes.length() > 0) {
+						val geometry = routes.getJSONObject(0).getJSONObject("geometry")
+						val coordinates = geometry.getJSONArray("coordinates")
+
+						for (i in 0 until coordinates.length()) {
+							val coord = coordinates.getJSONArray(i)
+							// OSRM retorna [lon, lat], GeoPoint quer [lat, lon]
+							val lon = coord.getDouble(0)
+							val lat = coord.getDouble(1)
+							points.add(GeoPoint(lat, lon))
+						}
+					}
+				}
+			} else {
+				Log.e("RotaDetalhe", "Erro API OSRM: ${response.code} - ${response.message}")
+			}
+		} catch (e: Exception) {
+			Log.e("RotaDetalhe", "Exceção na rota OSRM", e)
+		}
+		return@withContext points
+	}
 
 	private fun iniciarRotaGoogleMaps() {
 		val lat = proximaDemanda?.lat
@@ -199,9 +372,9 @@ class RotaDetalheActivity : AppCompatActivity() {
 		}
 	}
 
-	private fun abrirDetalheProximaDemanda() {
+	private fun abrirVistoriaProximaDemanda() {
 		proximaDemanda?.let { demanda ->
-			val intent = Intent(this, DemandaDetalheActivity::class.java)
+			val intent = Intent(this, VistoriaActivity::class.java)
 			intent.putExtra("DEMANDA_EXTRA", demanda)
 			vistoriaLauncher.launch(intent)
 		}
@@ -213,7 +386,19 @@ class RotaDetalheActivity : AppCompatActivity() {
 		demandaListLauncher.launch(intent)
 	}
 
-	// Menus e Ciclo de Vida
+	private fun getBitmapFromVectorDrawable(drawableId: Int): Bitmap? {
+		val drawable = ContextCompat.getDrawable(this, drawableId) ?: return null
+		val bitmap = Bitmap.createBitmap(
+			drawable.intrinsicWidth,
+			drawable.intrinsicHeight,
+			Bitmap.Config.ARGB_8888
+		)
+		val canvas = Canvas(bitmap)
+		drawable.setBounds(0, 0, canvas.width, canvas.height)
+		drawable.draw(canvas)
+		return bitmap
+	}
+
 	override fun onCreateOptionsMenu(menu: Menu?): Boolean {
 		menuInflater.inflate(R.menu.rota_detalhe_menu, menu)
 		return true
@@ -222,6 +407,11 @@ class RotaDetalheActivity : AppCompatActivity() {
 	override fun onOptionsItemSelected(item: MenuItem): Boolean {
 		return when (item.itemId) {
 			android.R.id.home -> { finish(); true }
+			R.id.action_optimize -> {
+				viewModel.otimizarRota()
+				Toast.makeText(this, "Rota otimizada", Toast.LENGTH_SHORT).show()
+				true
+			}
 			else -> super.onOptionsItemSelected(item)
 		}
 	}
@@ -229,12 +419,13 @@ class RotaDetalheActivity : AppCompatActivity() {
 	override fun onResume() {
 		super.onResume()
 		mapView.onResume()
-		// Refresh dos dados caso algo tenha mudado
-		if(rotaId != -1) viewModel.carregarDados()
+		locationOverlay?.enableMyLocation()
+		if (rotaId != -1) viewModel.carregarDados()
 	}
 
 	override fun onPause() {
 		super.onPause()
+		locationOverlay?.disableMyLocation()
 		mapView.onPause()
 	}
 }

@@ -13,6 +13,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import kotlin.math.pow
+import kotlin.math.sqrt
 
 data class RotaDetalheUiState(
 	val isLoading: Boolean = false,
@@ -83,11 +85,67 @@ class RotaDetalheViewModel @Inject constructor(
 		}
 	}
 
+	/**
+	 * Algoritmo do Vizinho Mais Próximo (Nearest Neighbor).
+	 * Reordena as demandas pendentes baseando-se na proximidade geográfica,
+	 * partindo da última demanda concluída (ou da primeira da lista).
+	 */
+	fun otimizarRota() {
+		val listaAtual = _uiState.value.demandas
+		if (listaAtual.isEmpty()) return
+
+		// 1. Separa concluídas de pendentes
+		val concluidas = listaAtual.filter { it.statusVistoria != "pendente" }
+		val pendentes = listaAtual.filter { it.statusVistoria == "pendente" }.toMutableList()
+
+		if (pendentes.isEmpty()) return
+
+		// 2. Ordenação
+		val pendentesOrdenadas = mutableListOf<Demanda>()
+
+		// Ponto de partida: última concluída ou a primeira pendente (se nenhuma foi feita ainda)
+		var pontoAtual = if (concluidas.isNotEmpty()) {
+			concluidas.last()
+		} else {
+			// Remove a primeira para ser o ponto de partida
+			pendentes.removeAt(0).also { pendentesOrdenadas.add(it) }
+		}
+
+		while (pendentes.isNotEmpty()) {
+			// Encontra qual das pendentes restantes está mais perto do pontoAtual
+			val vizinhoMaisProximo = pendentes.minByOrNull { candidato ->
+				calcularDistancia(pontoAtual, candidato)
+			}
+
+			vizinhoMaisProximo?.let {
+				pendentesOrdenadas.add(it)
+				pendentes.remove(it)
+				pontoAtual = it // O vizinho vira o novo ponto de referência
+			}
+		}
+
+		// 3. Reconstrói a lista completa: Concluídas (fixas) + Pendentes (reordenadas)
+		val novaListaCompleta = concluidas + pendentesOrdenadas
+
+		// 4. Atualiza a UI com a nova ordem
+		atualizarListas(_uiState.value.rota, novaListaCompleta)
+	}
+
+	// Cálculo simples de distância Euclidiana (suficiente para ordenação visual local)
+	private fun calcularDistancia(d1: Demanda, d2: Demanda): Double {
+		val lat1 = d1.lat ?: 0.0
+		val lng1 = d1.lng ?: 0.0
+		val lat2 = d2.lat ?: 0.0
+		val lng2 = d2.lng ?: 0.0
+
+		return sqrt((lat1 - lat2).pow(2) + (lng1 - lng2).pow(2))
+	}
+
 	private fun atualizarListas(rota: Rota?, demandas: List<Demanda>) {
+		// Filtra as pendentes mantendo a ordem da lista 'demandas' passada
+		// (Removemos o .sortedBy antigo para que a otimização funcione)
 		val pendentes = demandas.filter {
 			it.statusVistoria.equals("pendente", ignoreCase = true)
-		}.sortedBy {
-			demandas.indexOf(it) // Mantém ordem original
 		}
 
 		_uiState.value = _uiState.value.copy(

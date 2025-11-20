@@ -42,6 +42,7 @@ class DemandaDetalheActivity : AppCompatActivity() {
 		val demandaExtra = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
 			intent.getSerializableExtra("DEMANDA_EXTRA", Demanda::class.java)
 		} else {
+			@Suppress("DEPRECATION")
 			intent.getSerializableExtra("DEMANDA_EXTRA") as? Demanda
 		}
 

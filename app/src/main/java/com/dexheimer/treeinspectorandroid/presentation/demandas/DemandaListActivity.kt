@@ -3,8 +3,8 @@ package com.dexheimer.treeinspectorandroid.presentation.demandas
 import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
-import android.util.Log
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
@@ -16,32 +16,29 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.dexheimer.treeinspectorandroid.R
 import com.dexheimer.treeinspectorandroid.domain.model.Demanda
+import com.dexheimer.treeinspectorandroid.presentation.vistoria.VistoriaActivity
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 
-@AndroidEntryPoint // <--- ESSENCIAL: Permite a injeção do ViewModel
+@AndroidEntryPoint
 class DemandaListActivity : AppCompatActivity() {
 
-	private val viewModel: DemandasListViewModel by viewModels() // Injeção do ViewModel
-
+	// ... (outros atributos permanecem iguais)
+	private val viewModel: DemandasListViewModel by viewModels()
 	private lateinit var demandasRecyclerView: RecyclerView
 	private lateinit var demandaAdapter: DemandaAdapter
 	private var rotaId: Int = -1
 
-	// Launcher para pegar o resultado da VistoriaActivity
 	private val vistoriaLauncher = registerForActivityResult(
 		ActivityResultContracts.StartActivityForResult()
 	) { result ->
+		// ... (código do launcher igual)
 		if (result.resultCode == Activity.RESULT_OK) {
 			val novoStatus = result.data?.getStringExtra("NOVO_STATUS")
 			val demandaId = result.data?.getIntExtra("DEMANDA_ID", -1) ?: -1
-
 			if (novoStatus != null && demandaId != -1) {
-				// CORREÇÃO: Chama o ViewModel para atualizar o status e reordenar a lista
 				viewModel.atualizarStatusDemanda(demandaId, novoStatus)
 			}
-		} else {
-			Log.d("DemandaListActivity", "Vistoria não finalizada (usuário voltou).")
 		}
 	}
 
@@ -54,8 +51,17 @@ class DemandaListActivity : AppCompatActivity() {
 		setupToolbar()
 		setupRecyclerView()
 		observarViewModel()
+
+		// --- CORREÇÃO: Substitui o onBackPressed() ---
+		onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+			override fun handleOnBackPressed() {
+				setResult(Activity.RESULT_OK)
+				finish()
+			}
+		})
 	}
 
+	// ... (setupToolbar, setupRecyclerView, observarViewModel, abrirVistoria permanecem iguais)
 	private fun setupToolbar() {
 		val toolbar: Toolbar = findViewById(R.id.toolbar)
 		setSupportActionBar(toolbar)
@@ -65,11 +71,9 @@ class DemandaListActivity : AppCompatActivity() {
 
 	private fun setupRecyclerView() {
 		demandasRecyclerView = findViewById(R.id.demandasRecyclerView)
-
 		demandaAdapter = DemandaAdapter(emptyList()) { demandaClicada ->
 			abrirVistoria(demandaClicada)
 		}
-
 		demandasRecyclerView.layoutManager = LinearLayoutManager(this)
 		demandasRecyclerView.adapter = demandaAdapter
 	}
@@ -78,18 +82,9 @@ class DemandaListActivity : AppCompatActivity() {
 		lifecycleScope.launch {
 			repeatOnLifecycle(Lifecycle.State.STARTED) {
 				viewModel.uiState.collect { state ->
-					// 1. Erro ou Loading
-					if (state.isLoading) {
-						supportActionBar?.subtitle = "Carregando..."
-					}
-					if (state.error != null) {
-						Toast.makeText(this@DemandaListActivity, state.error, Toast.LENGTH_LONG).show()
-					}
-
-					// 2. Dados
+					if (state.isLoading) supportActionBar?.subtitle = "Carregando..."
+					if (state.error != null) Toast.makeText(this@DemandaListActivity, state.error, Toast.LENGTH_LONG).show()
 					demandaAdapter.updateData(state.demandas)
-
-					// 3. Subtítulo (Calculado no ViewModel, mas aqui calculamos do objeto Domain)
 					val pendentes = state.demandas.count { it.statusVistoria == "pendente" }
 					supportActionBar?.subtitle = "$pendentes demandas pendentes"
 				}
@@ -98,21 +93,17 @@ class DemandaListActivity : AppCompatActivity() {
 	}
 
 	private fun abrirVistoria(demanda: Demanda) {
-		val intent = Intent(this, DemandaDetalheActivity::class.java).apply {
+		val intent = Intent(this, VistoriaActivity::class.java).apply {
 			putExtra("DEMANDA_EXTRA", demanda)
 		}
 		vistoriaLauncher.launch(intent)
 	}
 
-	// Funções de navegação para voltar à RotaDetalheActivity
 	override fun onSupportNavigateUp(): Boolean {
 		setResult(Activity.RESULT_OK)
 		finish()
 		return true
 	}
 
-	override fun onBackPressed() {
-		setResult(Activity.RESULT_OK)
-		super.onBackPressed()
-	}
+	// REMOVIDO: override fun onBackPressed() { ... }
 }

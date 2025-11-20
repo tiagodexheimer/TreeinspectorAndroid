@@ -2,13 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- +++ INÍCIO DAS CORREÇÕES +++ -->
-
-    <!-- 1. Permissão para acessar a internet (API) -->
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- 2. Permissão para acessar o estado da rede -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
@@ -22,54 +17,36 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.TreeInspectorAndroid"
-
         android:usesCleartextTraffic="true"
         android:networkSecurityConfig="@xml/network_security_config"
         tools:targetApi="31">
 
-    <!--
-      MainActivity é a tela de "Entrada" (Launcher)
-      Ela agora é a nossa tela de Login.
-    -->
-    <activity
-        android:name=".presentation.login.MainActivity"
-        android:exported="true">
-        <intent-filter>
-            <action android:name="android.intent.action.MAIN" />
-            <category android:name="android.intent.category.LAUNCHER" />
-        </intent-filter>
-    </activity>
+        <activity
+            android:name=".presentation.login.MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
 
-    <!-- +++ INÍCIO DAS CORREÇÕES +++ -->
+        <activity
+            android:name=".presentation.rotas.RoutesActivity"
+            android:exported="false" />
 
-    <!--
-      4. DECLARE TODAS AS OUTRAS ACTIVITIES
-      O app estava falhando porque estas linhas não existiam.
-    -->
-    <activity
-        android:name=".presentation.rotas.RoutesActivity"
-        android:exported="false" />
+        <activity
+            android:name=".presentation.rotas.RotaDetalheActivity"
+            android:exported="false" />
 
-    <activity
-        android:name=".presentation.demandas.DemandaListActivity"
-        android:exported="false" />
-
-    <activity
-        android:name=".presentation.rotas.RotaDetalheActivity"
-        android:exported="false" />
-
-    <activity
-        android:name=".presentation.demandas.DemandaDetalheActivity"
-        android:exported="false" />
+        <activity
+            android:name=".presentation.demandas.DemandaListActivity"
+            android:exported="false" />
 
         <activity
             android:name=".presentation.vistoria.VistoriaActivity"
             android:label="Realizar Vistoria"
-            android:parentActivityName=".presentation.demandas.DemandaDetalheActivity" />
+            android:exported="false" />
 
-
-    <!-- +++ FIM DAS CORREÇÕES +++ -->
-
-</application>
+    </application>
 
 </manifest>

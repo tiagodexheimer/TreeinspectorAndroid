@@ -12,8 +12,6 @@ import android.view.View
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.CheckBox
-import android.widget.CompoundButton
-import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.RadioButton
@@ -72,9 +70,10 @@ class VistoriaActivity : AppCompatActivity() {
 		setupUI()
 
 		// 2. Recuperar Demanda
-		demandaAtual = if (Build.VERSION_CODES.TIRAMISU >= Build.VERSION.SDK_INT) {
+		demandaAtual = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
 			intent.getSerializableExtra("DEMANDA_EXTRA", Demanda::class.java)
 		} else {
+			@Suppress("DEPRECATION")
 			intent.getSerializableExtra("DEMANDA_EXTRA") as? Demanda
 		}
 
