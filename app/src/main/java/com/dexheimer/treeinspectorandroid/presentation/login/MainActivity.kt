@@ -18,6 +18,7 @@ import com.google.android.material.textfield.TextInputEditText
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 
+
 @AndroidEntryPoint
 class MainActivity : AppCompatActivity() {
 
@@ -48,6 +49,9 @@ class MainActivity : AppCompatActivity() {
 
 		setupUI()
 		observarEstado()
+
+
+
 	}
 
 	private fun setupUI() {
