@@ -1,0 +1,54 @@
+name: Android CI
+
+on:
+  push:
+    branches: [ "main", "master" ] # Roda em pushes para main ou master
+  pull_request:
+    branches: [ "main", "master" ] # Roda em PRs para main ou master
+
+jobs:
+  build:
+    name: Build e Testes
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do Código
+        uses: actions/checkout@v4
+
+      # Configura o Java 17 (Essencial para o seu Gradle atual)
+      - name: Configurar JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Dar permissão de execução ao Gradlew
+        run: chmod +x gradlew
+
+      # 1. Verifica a qualidade do código (Lint)
+      - name: Rodar Lint (Análise Estática)
+        run: ./gradlew lintDebug
+
+      # 2. Roda os Testes Unitários (Regras de Negócio)
+      - name: Rodar Testes Unitários
+        run: ./gradlew testDebugUnitTest
+
+      # 3. Gera o Relatório de Cobertura (80%)
+      - name: Gerar Relatório Jacoco
+        run: ./gradlew jacocoTestReport
+
+      # 4. Tenta compilar o APK (Garante que o app é "construível")
+      - name: Build do APK Debug
+        run: ./gradlew assembleDebug
+
+      # 5. Salva os relatórios no GitHub para você baixar depois
+      - name: Upload dos Relatórios (Artifacts)
+        if: always() # Executa mesmo se os testes falharem
+        uses: actions/upload-artifact@v4
+        with:
+          name: relatorios-qualidade
+          path: |
+            app/build/reports/tests/testDebugUnitTest/classes/
+            app/build/reports/jacoco/html/
+            app/build/reports/lint-results-debug.html
