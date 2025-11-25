@@ -1,49 +1,58 @@
 package com.dexheimer.treeinspectorandroid.presentation.vistoria
 
+import android.Manifest
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
-import android.graphics.Color
-import android.graphics.Typeface
+import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
+import android.location.Geocoder
+import android.location.Location
+import android.location.LocationManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.text.InputType
-import android.view.Gravity
+import android.util.Base64
 import android.view.View
-import android.widget.ArrayAdapter
 import android.widget.Button
-import android.widget.CheckBox
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
-import android.widget.RadioButton
-import android.widget.RadioGroup
-import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.dexheimer.treeinspectorandroid.R
+import com.dexheimer.treeinspectorandroid.core.util.ImageWatermarkUtils
 import com.dexheimer.treeinspectorandroid.data.remote.FormField
 import com.dexheimer.treeinspectorandroid.domain.model.Demanda
 import com.dexheimer.treeinspectorandroid.domain.usecase.SaveResult
 import com.dexheimer.treeinspectorandroid.presentation.vistoria.form.FormRendererFactory
-import com.google.android.material.switchmaterial.SwitchMaterial
-import com.google.android.material.textfield.TextInputEditText
-import com.google.android.material.textfield.TextInputLayout
+import com.dexheimer.treeinspectorandroid.presentation.vistoria.form.renderers.MultiPhotoRenderer
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import javax.inject.Inject
 
-@AndroidEntryPoint // <--- HILT: Ponto de entrada
+@AndroidEntryPoint
 class VistoriaActivity : AppCompatActivity() {
 
-	// NOVO: Injetar a Fábrica de Renderizadores (Hilt faz a mágica)
 	@Inject
 	lateinit var rendererFactory: FormRendererFactory
 
-	// --- Injeção do ViewModel ---
 	private val viewModel: VistoriaViewModel by viewModels()
 
 	// --- UI Components ---
@@ -51,25 +60,67 @@ class VistoriaActivity : AppCompatActivity() {
 	private lateinit var btnSalvar: Button
 	private lateinit var progressBar: ProgressBar
 	private lateinit var toolbar: androidx.appcompat.widget.Toolbar
-
 	private lateinit var txtTipoDemanda: TextView
 	private lateinit var txtEndereco: TextView
 	private lateinit var txtDescricao: TextView
+	private lateinit var btnFixedCamera: Button
+	private lateinit var btnFixedGallery: Button
+	private lateinit var containerFotosEstaticas: LinearLayout
+	private lateinit var txtSemFotos: TextView
 
-	// --- Estado Local da View ---
+	// --- Estado Local ---
 	private var demandaAtual: Demanda? = null
 	private val formViews = mutableMapOf<String, View>()
 	private var fieldDefinitions = emptyList<FormField>()
+	private val fotosEstaticasBase64 = mutableListOf<String>()
 
+	// --- Controle de Imagens, GPS e Permissões ---
+	private var currentPhotoField: String? = null
+	private var currentPhotoUri: Uri? = null
+	private var currentPhotoPath: String? = null
+	private var pendingFieldForPermission: String? = null
+	private var capturedLocation: Location? = null
+
+	// 1. Permissões (Câmera e Localização)
+	private val requestPermissionsLauncher = registerForActivityResult(
+		ActivityResultContracts.RequestMultiplePermissions()
+	) { permissions ->
+		val cameraGranted = permissions[Manifest.permission.CAMERA] ?: false
+		val locationGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
+
+		if (cameraGranted) {
+			// Tenta abrir a câmera mesmo se a localização for negada (vai sem GPS)
+			pendingFieldForPermission?.let { abrirCameraSegura(it, locationGranted) }
+		} else {
+			Toast.makeText(this, "Permissão de câmera é obrigatória.", Toast.LENGTH_LONG).show()
+		}
+	}
+
+	// 2. Launcher Câmera
+	private val takePictureLauncher = registerForActivityResult(ActivityResultContracts.TakePicture()) { success ->
+		if (success && currentPhotoField != null && currentPhotoPath != null) {
+			// Processa a foto para adicionar a marca d'água completa
+			processarFotoComDadosCompletos(currentPhotoPath!!, capturedLocation)
+		} else {
+			Toast.makeText(this, "Foto cancelada.", Toast.LENGTH_SHORT).show()
+		}
+	}
+
+	// 3. Launcher Galeria
+	private val pickImageLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+		if (uri != null && currentPhotoField != null) {
+			val localFile = copiarUriParaArquivo(uri)
+			if (localFile != null) {
+				adicionarFotoNaTela(currentPhotoField!!, localFile.absolutePath)
+			}
+		}
+	}
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
 		setContentView(R.layout.activity_vistoria)
-
-		// 1. Inicializar UI e Toolbar
 		setupUI()
 
-		// 2. Recuperar Demanda
 		demandaAtual = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
 			intent.getSerializableExtra("DEMANDA_EXTRA", Demanda::class.java)
 		} else {
@@ -77,121 +128,220 @@ class VistoriaActivity : AppCompatActivity() {
 			intent.getSerializableExtra("DEMANDA_EXTRA") as? Demanda
 		}
 
-		// 3. Preencher Dados e Iniciar Busca do Formulário
 		if (demandaAtual != null) {
-			// CORREÇÃO: Usando tipoDemanda (camelCase)
-			txtTipoDemanda.text = demandaAtual?.tipoDemanda ?: "Não informado"
-			txtEndereco.text = "${demandaAtual?.logradouro ?: ""}, ${demandaAtual?.numero ?: ""}\n${demandaAtual?.bairro ?: ""}"
-			txtDescricao.text = demandaAtual?.descricao ?: "Sem descrição."
-
-			// Chama o ViewModel para buscar e renderizar
+			preencherCabecalho()
 			demandaAtual?.tipoDemanda?.let { viewModel.buscarFormulario(it) }
 		} else {
-			Toast.makeText(this, "Erro crítico: Dados não encontrados.", Toast.LENGTH_LONG).show()
 			finish()
 			return
 		}
 
-		// 4. Ação do Botão Salvar
 		btnSalvar.setOnClickListener {
 			demandaAtual?.let { d ->
 				val respostas = coletarRespostas()
-				// CORREÇÃO CRÍTICA: Chama o ViewModel para salvar
 				viewModel.salvarVistoria(d, respostas)
 			}
 		}
-
-		// 5. Observar Estado do ViewModel
 		observarViewModel()
 	}
+
+	// ------------------------------------------------------------------------
+	// LÓGICA DE MARCA D'ÁGUA COMPLETA (GPS + ENDEREÇO + DATA)
+	// ------------------------------------------------------------------------
+
+	private fun processarFotoComDadosCompletos(path: String, location: Location?) {
+		showLoading(true)
+
+		lifecycleScope.launch(Dispatchers.IO) {
+			// 1. Data e Hora
+			val dateFormat = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault())
+			val dateStr = dateFormat.format(Date())
+
+			// 2. Coordenadas GPS
+			val gpsStr = if (location != null) {
+				"Lat: ${String.format("%.6f", location.latitude)} | Lon: ${String.format("%.6f", location.longitude)}"
+			} else {
+				"GPS: Não capturado"
+			}
+
+			// 3. Endereço (Tenta buscar se tiver GPS)
+			var addressStr = ""
+			if (location != null) {
+				val enderecoEncontrado = getAddressString(location)
+				if (enderecoEncontrado != null) {
+					addressStr = "\n$enderecoEncontrado"
+				}
+			}
+
+			// 4. Monta o texto final (Data + GPS + Endereço)
+			val finalText = "$dateStr\n$gpsStr$addressStr"
+
+			// 5. Aplica na imagem
+			val sucesso = ImageWatermarkUtils.waterMarkImage(path, finalText)
+
+			withContext(Dispatchers.Main) {
+				showLoading(false)
+				if (!sucesso) {
+					Toast.makeText(this@VistoriaActivity, "Aviso: Falha ao gravar marca d'água.", Toast.LENGTH_SHORT).show()
+				}
+				adicionarFotoNaTela(currentPhotoField!!, path)
+			}
+		}
+	}
+
+	/**
+	 * Retorna apenas a string do endereço legível, ou null se falhar.
+	 */
+	private fun getAddressString(location: Location): String? {
+		return try {
+			val geocoder = Geocoder(this, Locale.getDefault())
+			val addresses = geocoder.getFromLocation(location.latitude, location.longitude, 1)
+
+			if (!addresses.isNullOrEmpty()) {
+				val address = addresses[0]
+				val rua = address.thoroughfare ?: ""
+				val num = address.subThoroughfare ?: ""
+				val bairro = address.subLocality ?: address.locality ?: ""
+
+				if (rua.isNotEmpty()) "$rua, $num - $bairro" else null
+			} else {
+				null
+			}
+		} catch (e: Exception) {
+			null // Falha de rede ou serviço
+		}
+	}
+
+	// ------------------------------------------------------------------------
+	// FLUXO DE CÂMERA E PERMISSÕES
+	// ------------------------------------------------------------------------
+
+	fun solicitarFoto(fieldName: String) {
+		val hasCamera = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+		val hasLocation = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
+		if (hasCamera) {
+			// Se já tem câmera, abre (tenta pegar localização se tiver permissão)
+			abrirCameraSegura(fieldName, hasLocation)
+		} else {
+			pendingFieldForPermission = fieldName
+			// Pede tudo de uma vez
+			requestPermissionsLauncher.launch(arrayOf(
+				Manifest.permission.CAMERA,
+				Manifest.permission.ACCESS_FINE_LOCATION,
+				Manifest.permission.ACCESS_COARSE_LOCATION
+			))
+		}
+	}
+
+	fun solicitarGaleria(fieldName: String) {
+		currentPhotoField = fieldName
+		pickImageLauncher.launch("image/*")
+	}
+
+	private fun abrirCameraSegura(fieldName: String, hasLocationPermission: Boolean) {
+		currentPhotoField = fieldName
+
+		// Tenta capturar GPS AGORA, antes de abrir a câmera
+		capturedLocation = if (hasLocationPermission) {
+			obterLocalizacaoImediata()
+		} else {
+			null
+		}
+
+		val photoFile = criarArquivoImagem()
+		if (photoFile != null) {
+			currentPhotoPath = photoFile.absolutePath
+			val photoUri = FileProvider.getUriForFile(this, "${packageName}.fileprovider", photoFile)
+			currentPhotoUri = photoUri
+			takePictureLauncher.launch(photoUri)
+		}
+	}
+
+	private fun obterLocalizacaoImediata(): Location? {
+		val locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+		return try {
+			if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+				// Tenta GPS preciso primeiro, depois Rede
+				locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+					?: locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+			} else {
+				null
+			}
+		} catch (e: Exception) {
+			null
+		}
+	}
+
+	// ------------------------------------------------------------------------
+	// MÉTODOS PADRÃO DA ACTIVITY (UI, ViewModel, Helpers)
+	// ------------------------------------------------------------------------
 
 	private fun setupUI() {
 		toolbar = findViewById(R.id.toolbar)
 		setSupportActionBar(toolbar)
 		supportActionBar?.setDisplayHomeAsUpEnabled(true)
-		supportActionBar?.title = "Realizar Vistoria"
-
 		dynamicFormContainer = findViewById(R.id.dynamicFormContainer)
 		btnSalvar = findViewById(R.id.btnSalvarVistoria)
 		progressBar = findViewById(R.id.progressBarForm)
-
 		txtTipoDemanda = findViewById(R.id.txtTipoDemanda)
 		txtEndereco = findViewById(R.id.txtEndereco)
 		txtDescricao = findViewById(R.id.txtDescricao)
+		btnFixedCamera = findViewById(R.id.btnFixedCamera)
+		btnFixedGallery = findViewById(R.id.btnFixedGallery)
+		containerFotosEstaticas = findViewById(R.id.containerFotosEstaticas)
+		txtSemFotos = findViewById(R.id.txtSemFotos)
+
+		btnFixedCamera.setOnClickListener { solicitarFoto("FIELD_FIXED_PHOTOS") }
+		btnFixedGallery.setOnClickListener { solicitarGaleria("FIELD_FIXED_PHOTOS") }
+	}
+
+	private fun preencherCabecalho() {
+		txtTipoDemanda.text = demandaAtual?.tipoDemanda ?: ""
+		txtEndereco.text = "${demandaAtual?.logradouro}, ${demandaAtual?.numero}"
+		txtDescricao.text = demandaAtual?.descricao
+	}
+
+	private fun adicionarFotoNaTela(fieldName: String, path: String) {
+		if (fieldName == "FIELD_FIXED_PHOTOS") {
+			val base64Img = fileToBase64(path)
+			if (base64Img != null) {
+				fotosEstaticasBase64.add(base64Img)
+				txtSemFotos.visibility = View.GONE
+				val imageView = ImageView(this).apply {
+					layoutParams = LinearLayout.LayoutParams(250, 250).apply { setMargins(0, 0, 16, 0) }
+					scaleType = ImageView.ScaleType.CENTER_CROP
+					setImageBitmap(BitmapFactory.decodeFile(path))
+					background = getDrawable(R.drawable.ic_launcher_background)
+				}
+				containerFotosEstaticas.addView(imageView)
+			}
+		} else {
+			val viewContainer = formViews[fieldName]
+			viewContainer?.let { MultiPhotoRenderer.addPhotoToView(it, path) }
+		}
 	}
 
 	private fun observarViewModel() {
 		lifecycleScope.launch {
 			repeatOnLifecycle(Lifecycle.State.STARTED) {
 				viewModel.uiState.collect { state ->
-					// 1. Lógica de Loading
-					showLoading(state.isLoading)
-					btnSalvar.text = if (state.isLoading) "Salvando..." else "Concluir Vistoria"
-					btnSalvar.isEnabled = !state.isLoading && state.formFields.isNotEmpty()
-
-					// 2. Renderização do Formulário
+					if (!progressBar.isIndeterminate) showLoading(state.isLoading)
+					val temConteudo = state.formFields.isNotEmpty() || fotosEstaticasBase64.isNotEmpty()
+					btnSalvar.isEnabled = !state.isLoading && temConteudo
 					if (state.formFields.isNotEmpty() && fieldDefinitions != state.formFields) {
 						fieldDefinitions = state.formFields
 						renderDynamicForm(state.formFields)
 					}
-
-					// 3. Lógica de Erro
-					if (state.error != null) {
-						mostrarMensagemNoContainer(state.error)
-					}
-
-					// 4. Resultado Final
-					state.saveResult?.let { result ->
-						when (result) {
-							is SaveResult.SuccessOnline -> {
-								finalizarComSucesso("Vistoria enviada com sucesso!", "concluido")
-							}
-							is SaveResult.SuccessOffline -> {
-								finalizarComSucesso("Salvo offline. Será sincronizado automaticamente.", "concluido_pendente")
-							}
-							is SaveResult.Failure -> {
-								// Se falhar localmente, mantém o botão ativo
-								Toast.makeText(this@VistoriaActivity, result.message, Toast.LENGTH_LONG).show()
-								btnSalvar.isEnabled = true
-							}
-						}
-					}
+					state.saveResult?.let { tratarResultadoSalvamento(it) }
 				}
 			}
 		}
 	}
-
-	// --- LÓGICA DE COLETA DE DADOS ---
-
-// Em VistoriaActivity.kt
-
-	private fun coletarRespostas(): Map<String, Any> {
-		val respostas = HashMap<String, Any>()
-
-		// O loop foi simplificado, a responsabilidade de coleta está nos Renderers.
-		for (campo in fieldDefinitions) {
-			val view = formViews[campo.name]
-			val renderer = rendererFactory.getRenderer(campo.type)
-
-			if (view != null && renderer != null) {
-				val resposta = renderer.collectResponse(view, campo)
-				if (resposta != null) {
-					respostas[campo.name] = resposta
-				}
-			}
-		}
-		return respostas
-	}
-
-	// --- LÓGICA DE RENDERIZAÇÃO (Mantida na View) ---
-
-// Em VistoriaActivity.kt
 
 	private fun renderDynamicForm(campos: List<FormField>) {
 		dynamicFormContainer.removeAllViews()
 		formViews.clear()
-
-		// O loop foi simplificado, a responsabilidade de renderizar está nos Renderers.
 		for (campo in campos) {
 			val renderer = rendererFactory.getRenderer(campo.type)
 			if (renderer != null) {
@@ -199,142 +349,71 @@ class VistoriaActivity : AppCompatActivity() {
 				formViews[campo.name] = view
 			}
 		}
-		// Remove a lógica de espaçador que estava no final do loop original
-		// (A lógica de espaçamento foi movida para dentro de cada Renderer)
 	}
 
-	private fun renderTextField(campo: FormField) {
-		val textInputLayout = TextInputLayout(this)
-		textInputLayout.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-		textInputLayout.hint = campo.label
-		textInputLayout.boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_OUTLINE
-
-		val editText = TextInputEditText(textInputLayout.context)
-		editText.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-
-		if (campo.type == "textarea") {
-			editText.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-			editText.minLines = campo.rows ?: 3
-			editText.gravity = Gravity.TOP or Gravity.START
-		} else {
-			editText.inputType = InputType.TYPE_CLASS_TEXT
+	private fun coletarRespostas(): Map<String, Any> {
+		val respostas = HashMap<String, Any>()
+		for (campo in fieldDefinitions) {
+			val view = formViews[campo.name]
+			val renderer = rendererFactory.getRenderer(campo.type)
+			if (view != null && renderer != null) {
+				val resp = renderer.collectResponse(view, campo)
+				if (resp != null) respostas[campo.name] = resp
+			}
 		}
-
-		textInputLayout.addView(editText)
-		dynamicFormContainer.addView(textInputLayout)
-		formViews[campo.name] = editText
+		if (fotosEstaticasBase64.isNotEmpty()) respostas["fotos_evidencia"] = fotosEstaticasBase64
+		return respostas
 	}
 
-	private fun renderRadioGroup(campo: FormField) {
-		val labelView = TextView(this)
-		labelView.text = campo.label
-		labelView.textSize = 16f
-		labelView.setTextColor(Color.BLACK)
-		labelView.typeface = Typeface.DEFAULT_BOLD
-		labelView.setPadding(0, 0, 0, 16)
-		dynamicFormContainer.addView(labelView)
-
-		val radioGroup = RadioGroup(this)
-		radioGroup.orientation = RadioGroup.VERTICAL
-
-		campo.options?.forEach { option ->
-			val radioButton = RadioButton(this)
-			radioButton.text = option.label
-			radioButton.tag = option.value
-			radioButton.id = View.generateViewId()
-			radioGroup.addView(radioButton)
-		}
-
-		dynamicFormContainer.addView(radioGroup)
-		formViews[campo.name] = radioGroup
+	private fun criarArquivoImagem(): File? {
+		val timeStamp: String = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+		val storageDir: File? = getExternalFilesDir(android.os.Environment.DIRECTORY_PICTURES)
+		return try { File.createTempFile("JPEG_${timeStamp}_", ".jpg", storageDir) } catch (e: Exception) { null }
 	}
 
-	private fun renderSpinner(campo: FormField) {
-		val labelView = TextView(this)
-		labelView.text = campo.label
-		labelView.textSize = 16f
-		labelView.setTextColor(Color.BLACK)
-		labelView.typeface = Typeface.DEFAULT_BOLD
-		labelView.setPadding(0, 0, 0, 8)
-		dynamicFormContainer.addView(labelView)
-
-		val spinner = Spinner(this)
-		spinner.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-
-		val opcoesLista = mutableListOf("Selecione...")
-		val valoresLista = mutableListOf("")
-
-		campo.options?.forEach { option ->
-			opcoesLista.add(option.label)
-			valoresLista.add(option.value)
-		}
-
-		val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, opcoesLista)
-		adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-		spinner.adapter = adapter
-		spinner.tag = valoresLista
-
-		dynamicFormContainer.addView(spinner)
-		formViews[campo.name] = spinner
+	private fun copyingUriParaArquivo(uri: Uri): File? {
+		return try {
+			val inputStream = contentResolver.openInputStream(uri)
+			val file = criarArquivoImagem()
+			val outputStream = FileOutputStream(file)
+			inputStream?.use { input -> outputStream.use { output -> input.copyTo(output) } }
+			file
+		} catch (e: Exception) { null }
 	}
+	private fun copiarUriParaArquivo(uri: Uri) = copyingUriParaArquivo(uri)
 
-	private fun renderSwitch(campo: FormField) {
-		val switchView = SwitchMaterial(this)
-		switchView.text = campo.label
-		switchView.textSize = 16f
-		switchView.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-
-		if (campo.defaultValue.toString() == "true") {
-			switchView.isChecked = true
-		}
-
-		dynamicFormContainer.addView(switchView)
-		formViews[campo.name] = switchView
-	}
-
-	private fun renderCheckbox(campo: FormField) {
-		val checkBox = CheckBox(this)
-		checkBox.text = campo.label
-		checkBox.textSize = 16f
-		checkBox.setTextColor(Color.BLACK)
-		checkBox.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-
-		if (campo.defaultValue.toString() == "true") {
-			checkBox.isChecked = true
-		}
-
-		dynamicFormContainer.addView(checkBox)
-		formViews[campo.name] = checkBox
-	}
-
-	// --- HELPERS E FINALIZAÇÃO ---
-
-	private fun finalizarComSucesso(msg: String, novoStatus: String) {
-		Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
-		val resultIntent = Intent()
-		resultIntent.putExtra("NOVO_STATUS", novoStatus)
-		resultIntent.putExtra("DEMANDA_ID", demandaAtual?.id)
-		setResult(Activity.RESULT_OK, resultIntent)
-		finish()
+	private fun fileToBase64(filePath: String): String? {
+		return try {
+			val bytes = File(filePath).readBytes()
+			val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+			"data:image/jpeg;base64,$base64"
+		} catch (e: Exception) { null }
 	}
 
 	private fun showLoading(isLoading: Boolean) {
 		progressBar.visibility = if (isLoading) View.VISIBLE else View.GONE
 	}
 
-	private fun mostrarMensagemNoContainer(msg: String) {
-		dynamicFormContainer.removeAllViews()
-		val tv = TextView(this)
-		tv.text = msg
-		tv.setTextColor(Color.RED)
-		tv.textSize = 16f
-		tv.gravity = Gravity.CENTER
-		tv.setPadding(0, 20, 0, 20)
-		dynamicFormContainer.addView(tv)
+	private fun tratarResultadoSalvamento(result: SaveResult) {
+		when (result) {
+			is SaveResult.SuccessOnline -> finalizarComSucesso("Vistoria enviada!", "concluido")
+			is SaveResult.SuccessOffline -> finalizarComSucesso("Salvo offline.", "concluido_pendente")
+			is SaveResult.Failure -> {
+				Toast.makeText(this, "Erro: ${result.message}", Toast.LENGTH_LONG).show()
+				btnSalvar.isEnabled = true
+			}
+		}
 	}
 
-	override fun onSupportNavigateUp(): Boolean {
+	private fun finalizarComSucesso(msg: String, novoStatus: String) {
+		Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+		val resultIntent = Intent().apply {
+			putExtra("NOVO_STATUS", novoStatus)
+			putExtra("DEMANDA_ID", demandaAtual?.id)
+		}
+		setResult(Activity.RESULT_OK, resultIntent)
 		finish()
-		return true
 	}
+
+	override fun onSupportNavigateUp(): Boolean { finish(); return true }
 }

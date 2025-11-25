@@ -5,39 +5,44 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="@color/tree_beige_background"
-    tools:context=".presentation.vistoria.VistoriaActivity">
+    android:background="#F5F5F5">
 
     <androidx.appcompat.widget.Toolbar
         android:id="@+id/toolbar"
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
-        android:background="@color/tree_green_primary"
+        android:background="?attr/colorPrimary"
         android:elevation="4dp"
         android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
-        app:titleTextColor="@color/white" />
+        app:popupTheme="@style/ThemeOverlay.AppCompat.Light" />
+
+    <ProgressBar
+        android:id="@+id/progressBarForm"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:indeterminate="true"
+        android:visibility="gone"
+        tools:visibility="visible" />
 
     <ScrollView
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:fillViewport="true">
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true"
+        android:padding="16dp">
 
         <LinearLayout
-            android:id="@+id/contentLayout"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:padding="16dp">
+            android:orientation="vertical">
 
-            <com.google.android.material.card.MaterialCardView
+            <androidx.cardview.widget.CardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="24dp"
-                app:cardCornerRadius="12dp"
-                app:cardElevation="2dp"
-                app:strokeColor="#E0E0E0"
-                app:strokeWidth="1dp"
-                android:backgroundTint="@color/white">
+                android:layout_marginBottom="16dp"
+                app:cardCornerRadius="8dp"
+                app:cardElevation="2dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -46,86 +51,126 @@
                     android:padding="16dp">
 
                     <TextView
-                        android:text="Dados da Demanda"
-                        android:textSize="12sp"
-                        android:textColor="@color/tree_green_dark"
-                        android:textAllCaps="true"
-                        android:textStyle="bold"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginBottom="8dp"/>
-
-                    <TextView
                         android:id="@+id/txtTipoDemanda"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        tools:text="Poda de Árvore"
-                        android:textColor="#000000"
-                        android:textSize="20sp"
+                        android:text="Poda de Árvore"
+                        android:textSize="18sp"
                         android:textStyle="bold"
-                        android:layout_marginBottom="4dp"/>
+                        android:textColor="@android:color/black" />
 
                     <TextView
                         android:id="@+id/txtEndereco"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        tools:text="Rua das Flores, 123"
-                        android:textSize="16sp"
-                        android:textColor="#424242"
-                        android:drawablePadding="8dp"
-                        app:drawableStartCompat="@android:drawable/ic_dialog_map"/>
+                        android:layout_marginTop="4dp"
+                        android:text="Rua das Flores, 123 - Centro"
+                        android:textColor="#666666" />
 
                     <TextView
                         android:id="@+id/txtDescricao"
-                        android:layout_width="match_parent"
+                        android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        android:background="#F5F5F5"
-                        android:padding="12dp"
-                        tools:text="Descrição da demanda..."
-                        android:textSize="14sp"
-                        android:textColor="#616161"
-                        android:textStyle="italic"/>
+                        android:layout_marginTop="8dp"
+                        android:text="Descrição do serviço a ser realizado..."
+                        android:textSize="14sp" />
                 </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Formulário de Vistoria"
-                android:textSize="18sp"
-                android:textStyle="bold"
-                android:textColor="@color/tree_brown_secondary"
-                android:layout_marginBottom="16dp"/>
-
-            <ProgressBar
-                android:id="@+id/progressBarForm"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center"
-                android:visibility="gone"/>
+            </androidx.cardview.widget.CardView>
 
             <LinearLayout
                 android:id="@+id/dynamicFormContainer"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical" />
+                android:orientation="vertical"
+                android:layout_marginBottom="24dp" />
 
-            <Button
-                android:id="@+id/btnSalvarVistoria"
+            <View
                 android:layout_width="match_parent"
-                android:layout_height="56dp"
-                android:layout_marginTop="32dp"
-                android:layout_marginBottom="24dp"
-                android:text="Concluir Vistoria"
-                android:backgroundTint="@color/tree_green_primary"
-                android:textColor="@color/white"
-                android:textStyle="bold"
-                android:textSize="16sp"
-                app:cornerRadius="8dp"
-                android:elevation="4dp"/>
+                android:layout_height="1dp"
+                android:background="#DDDDDD"
+                android:layout_marginBottom="16dp"/>
+
+            <LinearLayout
+                android:id="@+id/staticPhotoSection"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="📸 Evidências Fotográficas"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:textColor="@android:color/black"
+                    android:layout_marginBottom="12dp"/>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginBottom="16dp">
+
+                    <Button
+                        android:id="@+id/btnFixedCamera"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Câmera"
+                        android:layout_marginEnd="8dp"
+                        app:icon="@drawable/ic_launcher_foreground" />
+                    <Button
+                        android:id="@+id/btnFixedGallery"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Galeria"
+                        android:layout_marginStart="8dp"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"/>
+                </LinearLayout>
+
+                <HorizontalScrollView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="120dp"
+                    android:background="#E0E0E0"
+                    android:padding="8dp">
+
+                    <LinearLayout
+                        android:id="@+id/containerFotosEstaticas"
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+
+                        <TextView
+                            android:id="@+id/txtSemFotos"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Nenhuma foto adicionada"
+                            android:textColor="#888888"
+                            android:layout_marginStart="8dp"/>
+                    </LinearLayout>
+                </HorizontalScrollView>
+
+            </LinearLayout>
 
         </LinearLayout>
     </ScrollView>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="16dp"
+        android:background="@android:color/white"
+        android:elevation="8dp">
+
+        <Button
+            android:id="@+id/btnSalvarVistoria"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="Concluir Vistoria"
+            android:textSize="16sp" />
+    </LinearLayout>
 
 </LinearLayout>

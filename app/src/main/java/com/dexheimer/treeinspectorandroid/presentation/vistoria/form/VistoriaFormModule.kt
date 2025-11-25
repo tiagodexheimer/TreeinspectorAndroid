@@ -1,5 +1,7 @@
 package com.dexheimer.treeinspectorandroid.presentation.vistoria.form
 
+import com.dexheimer.treeinspectorandroid.presentation.vistoria.form.renderers.MultiPhotoRenderer
+import com.dexheimer.treeinspectorandroid.presentation.vistoria.form.renderers.PhotoRenderer
 import com.dexheimer.treeinspectorandroid.presentation.vistoria.form.renderers.RadioGroupRenderer
 import com.dexheimer.treeinspectorandroid.presentation.vistoria.form.renderers.SpinnerRenderer
 import com.dexheimer.treeinspectorandroid.presentation.vistoria.form.renderers.SwitchCheckboxRenderer
@@ -30,5 +32,11 @@ object VistoriaFormModule {
 	@IntoSet
 	fun provideSwitchCheckboxRenderer(): FormFieldRenderer = SwitchCheckboxRenderer()
 
-	// O FormRendererFactory será injetado automaticamente pois usamos @Inject no construtor dele.
+	@Provides
+	@IntoSet
+	fun providePhotoRenderer(): FormFieldRenderer = PhotoRenderer()
+
+	@Provides
+	@IntoSet
+	fun provideMultiPhotoRenderer(): FormFieldRenderer = MultiPhotoRenderer()
 }
