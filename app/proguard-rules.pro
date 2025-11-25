@@ -19,3 +19,13 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Manter os modelos de dados usados pelo Gson/Retrofit
+-keep class com.dexheimer.treeinspectorandroid.data.remote.** { *; }
+-keep class com.dexheimer.treeinspectorandroid.data.local.** { *; }
+-keep class com.dexheimer.treeinspectorandroid.core.util.Geom { *; }
+
+# Manter assinaturas genéricas (importante para List<DemandaDTO>)
+-keepattributes Signature
+-keepattributes *Annotation*
+-keepattributes EnclosingMethod

@@ -1,5 +1,6 @@
 package com.dexheimer.treeinspectorandroid.domain.usecase
 
+import android.util.Log
 import com.dexheimer.treeinspectorandroid.core.util.SessionManager
 import com.dexheimer.treeinspectorandroid.data.local.DemandaDao
 import com.dexheimer.treeinspectorandroid.data.local.VistoriaDao
@@ -13,18 +14,15 @@ class SyncVistoriasUseCase @Inject constructor(
 	private val vistoriaDao: VistoriaDao,
 	private val demandaDao: DemandaDao,
 	private val apiService: ApiService,
-	private val sessionManager: SessionManager // Ainda necessário para pegar o token aqui
+	private val sessionManager: SessionManager
 ) {
-	/**
-	 * Executa a sincronização de todas as vistorias pendentes.
-	 * @return Result<Boolean> true se todas sincronizaram, false se houver falhas.
-	 */
 	suspend operator fun invoke(): Result<Boolean> {
 
-		// O token é recuperado aqui e, idealmente, seria injetado via OkHttp
-		val token = sessionManager.getAuthToken()
+		// CORREÇÃO: Usar 'getCookieString()' em vez de 'getAuthToken()'
+		val token = sessionManager.getCookieString()
+
 		if (token.isNullOrEmpty()) {
-			return Result.failure(Exception("Token de sessão ausente."))
+			return Result.failure(Exception("Sessão inválida. Faça login novamente."))
 		}
 
 		val pendentes = vistoriaDao.getTodasPendentes()
@@ -39,17 +37,30 @@ class SyncVistoriasUseCase @Inject constructor(
 				val respostasMap: Map<String, Any> = gson.fromJson(vistoria.jsonRespostas, type)
 				val request = VistoriaRequest(vistoria.demandaId, respostasMap)
 
-				// Chamada de Rede
 				val response = apiService.salvarVistoria(request)
 
 				if (response.isSuccessful) {
+					// Sucesso: Remove da fila
 					vistoriaDao.removerDaFila(vistoria)
 					demandaDao.updateStatus(vistoria.demandaId, "concluido")
+
+				} else if (response.code() == 404 || response.code() == 400) {
+					// --- CORREÇÃO AQUI ---
+					// Erro 404: A demanda não existe mais no servidor.
+					// Não adianta tentar de novo. Removemos da fila para destravar a sincronização.
+					Log.w("Sync", "Demanda ${vistoria.demandaId} não existe mais. Removendo vistoria da fila.")
+
+					vistoriaDao.removerDaFila(vistoria)
+
+					// Opcional: Apagar a demanda local também para limpar
+					// demandaDao.deleteById(vistoria.demandaId)
+
 				} else if (response.code() == 401) {
-					// Sessão expirada, para de tentar
+					// Sessão expirada, para tudo
 					todasSincronizadas = false
 					break
 				} else {
+					// Outro erro (500, timeout): Mantém na fila para tentar depois
 					todasSincronizadas = false
 				}
 

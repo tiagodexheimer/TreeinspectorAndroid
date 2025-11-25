@@ -1,6 +1,6 @@
-// app/src/main/java/com/dexheimer/treeinspectorandroid/ApiService.kt
 package com.dexheimer.treeinspectorandroid.data.remote
 
+import com.dexheimer.treeinspectorandroid.data.local.RotaEntity
 import com.dexheimer.treeinspectorandroid.domain.model.Demanda
 import com.google.gson.annotations.SerializedName
 import retrofit2.Response
@@ -10,22 +10,32 @@ import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
 
-// Data Class para enviar os dados
+// --- Data Classes para Envio (Requests) ---
+
 data class VistoriaRequest(
 	val demandaId: Int,
-	val respostas: Map<String, Any> // O Gson converte Map automaticamente para JSON Object
+	val respostas: Map<String, Any>
 )
-
-// --- Data Classes para Login ---
 
 data class LoginRequest(
 	val email: String,
 	val password: String,
-	val csrfToken: String?,
+	// Campos opcionais mantidos para compatibilidade, mas não usados na nova rota
+	val csrfToken: String? = null,
 	val callbackUrl: String? = null,
 	val json: Boolean = true
 )
 
+// --- Data Classes para Resposta (Responses) ---
+
+// [NOVO] Wrapper para ler a resposta da rota api/mobile-login
+// O servidor retorna: { "success": true, "user": { "id": "...", ... } }
+data class MobileAuthResponse(
+	val success: Boolean,
+	val user: LoginResponse // Reutilizamos a sua classe LoginResponse para o objeto interno
+)
+
+// Mantido igual (agora representa o objeto "user" dentro da resposta)
 data class LoginResponse(
 	val id: String,
 	val name: String?,
@@ -33,44 +43,11 @@ data class LoginResponse(
 	val role: String
 )
 
+// Não é mais estritamente necessário, mas pode manter se tiver uso futuro
 data class CsrfResponse(
 	@SerializedName("csrfToken")
 	val csrfToken: String
 )
-
-// --- Interface da API ---
-
-interface ApiService {
-
-	@GET("api/auth/csrf")
-	suspend fun getCsrfToken(): Response<CsrfResponse>
-
-	@POST("api/auth/callback/credentials")
-	suspend fun login(@Body loginRequest: LoginRequest): Response<LoginResponse>
-
-	@GET("api/demandas")
-	suspend fun getDemandas(): Response<DemandasResponse>
-
-	// NOVO: Endpoint para detalhes da rota
-	@GET("api/rotas/{id}")
-	suspend fun getRotaDetalhes(@Path("id") rotaId: Int): Response<RotaDetalheResponse>
-
-	// NOVO: Busca o formulário pelo nome do tipo (ex: "Poda")
-	@GET("api/mobile/formulario-por-tipo")
-	suspend fun getFormularioPorTipo(@Query("tipo") tipo: String): Response<List<FormField>>
-
-	// NOVO: Envia a vistoria realizada
-	@POST("api/mobile/salvar-vistoria")
-	suspend fun salvarVistoria(@Body request: VistoriaRequest): Response<Void> // Void pois não precisamos de corpo na resposta, só 200 OK
-	// Adicione dentro da interface ApiService
-	@GET("api/rotas")
-// Nota: Estamos a assumir que o JSON devolvido bate com a RotaEntity.
-// Se a API tiver campos diferentes, deveríamos criar um RotaDTO.
-	suspend fun getRotas(): retrofit2.Response<List<com.dexheimer.treeinspectorandroid.data.local.RotaEntity>>
-
-}
-
-// Classes de Resposta Auxiliares
 
 data class DemandasResponse(
 	@SerializedName("demandas")
@@ -80,3 +57,30 @@ data class DemandasResponse(
 	@SerializedName("limit")
 	val limit: Int?
 )
+
+// --- Interface da API ---
+
+interface ApiService {
+
+	// Rota antiga (com CSRF) substituída pela nova:
+	@POST("api/mobile-login")
+	suspend fun login(@Body loginRequest: LoginRequest): Response<MobileAuthResponse>
+
+	@GET("api/auth/csrf")
+	suspend fun getCsrfToken(): Response<CsrfResponse>
+
+	@GET("api/demandas")
+	suspend fun getDemandas(): Response<DemandasResponse>
+
+	@GET("api/rotas/{id}")
+	suspend fun getRotaDetalhes(@Path("id") rotaId: Int): Response<RotaDetalheResponse>
+
+	@GET("api/rotas")
+	suspend fun getRotas(): Response<List<RotaEntity>>
+
+	@GET("api/mobile/formulario-por-tipo")
+	suspend fun getFormularioPorTipo(@Query("tipo") tipo: String): Response<List<FormField>>
+
+	@POST("api/mobile/salvar-vistoria")
+	suspend fun salvarVistoria(@Body request: VistoriaRequest): Response<Void>
+}

@@ -97,6 +97,6 @@ class VistoriaViewModel @Inject constructor(
 
 	private suspend fun salvarFormularioNoCache(tipo: String, campos: List<FormField>) {
 		val json = Gson().toJson(campos)
-		formularioDao.salvarFormulario(com.dexheimer.treeinspectorandroid.data.local.FormularioCache(tipo, json))
+		formularioDao.insertOrUpdate(tipo, json)
 	}
 }

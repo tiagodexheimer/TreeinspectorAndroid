@@ -32,6 +32,11 @@ class MainActivity : AppCompatActivity() {
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
 
+		// Verifica se veio do Interceptor
+		if (intent.getBooleanExtra("LOGIN_EXPIRED", false)) {
+			Toast.makeText(this, "Sessão expirada. Faça login novamente.", Toast.LENGTH_LONG).show()
+		}
+
 		sessionManager = SessionManager(applicationContext)
 
 		if (sessionManager.isLoggedIn()) {

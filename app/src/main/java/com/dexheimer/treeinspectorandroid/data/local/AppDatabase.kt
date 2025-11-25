@@ -1,15 +1,16 @@
-package com.dexheimer.treeinspectorandroid.data.local // <--- Ajuste o pacote
+package com.dexheimer.treeinspectorandroid.data.local
 
 import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
-import com.dexheimer.treeinspectorandroid.core.util.GeomTypeConverter // <--- Importe do novo local (core/util)
+import com.dexheimer.treeinspectorandroid.core.util.GeomTypeConverter
 
+// Certifique-se que 'FormularioCache::class' está na lista de entities
 @Database(
 	entities = [RotaEntity::class, DemandaEntity::class, FormularioCache::class, VistoriaPendente::class],
-	version = 4,
+	version = 4, // Se der erro de migração, aumente para 5
 	exportSchema = false
 )
 @TypeConverters(GeomTypeConverter::class)
@@ -31,8 +32,6 @@ abstract class AppDatabase : RoomDatabase() {
 					AppDatabase::class.java,
 					"tree_inspector_db"
 				)
-					// IMPORTANTE: fallbackToDestructiveMigration() vai limpar o banco antigo
-					// Isso evita crash por incompatibilidade de esquema durante a refatoração
 					.fallbackToDestructiveMigration()
 					.build()
 				INSTANCE = instance

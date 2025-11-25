@@ -420,7 +420,6 @@ class RotaDetalheActivity : AppCompatActivity() {
 		super.onResume()
 		mapView.onResume()
 		locationOverlay?.enableMyLocation()
-		if (rotaId != -1) viewModel.carregarDados()
 	}
 
 	override fun onPause() {

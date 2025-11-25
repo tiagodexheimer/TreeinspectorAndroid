@@ -10,7 +10,7 @@ class SessionManager(context: Context) {
 
 	companion object {
 		const val IS_LOGGED_IN = "isLoggedIn"
-		const val AUTH_COOKIE = "auth_cookie" // [NOVO]
+		const val AUTH_COOKIE = "auth_cookie_string" // Nome da chave atualizado
 	}
 
 	fun setLoggedIn(isLoggedIn: Boolean) {
@@ -21,13 +21,21 @@ class SessionManager(context: Context) {
 		return prefs.getBoolean(IS_LOGGED_IN, false)
 	}
 
-	// [NOVO] Salva o cookie completo
-	fun saveAuthToken(token: String) {
-		prefs.edit().putString(AUTH_COOKIE, token).apply()
+	// --- MÉTODOS DE COOKIE (MANUAL) ---
+
+	// Salva a string completa do cookie (ex: "authjs.session-token=xyz; next-auth...")
+	fun saveCookieString(cookie: String) {
+		prefs.edit().putString(AUTH_COOKIE, cookie).apply()
 	}
 
-	// [NOVO] Recupera o cookie
-	fun getAuthToken(): String? {
+	fun getCookieString(): String? {
 		return prefs.getString(AUTH_COOKIE, null)
+	}
+
+	fun clearSession() {
+		prefs.edit()
+			.remove(IS_LOGGED_IN)
+			.remove(AUTH_COOKIE)
+			.apply()
 	}
 }

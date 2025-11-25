@@ -96,6 +96,5 @@ dependencies {
 	androidTestImplementation(libs.androidx.junit)
 	androidTestImplementation(libs.androidx.espresso.core)
 
-	// Removendo declarações duplicadas
-	// implementation("com.android.volley:volley:1.2.1") <--- REMOVIDO
+	implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
 }

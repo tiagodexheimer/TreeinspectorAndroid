@@ -15,4 +15,7 @@ interface VistoriaDao {
 
 	@Delete
 	suspend fun removerDaFila(vistoria: VistoriaPendente)
+
+	@Query("SELECT COUNT(*) FROM vistorias_pendentes") // Ou o nome correto da sua tabela
+	suspend fun contarPendentes(): Int
 }

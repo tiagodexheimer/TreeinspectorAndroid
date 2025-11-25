@@ -1,19 +1,18 @@
 package com.dexheimer.treeinspectorandroid.core.di
 
+import android.content.Context
 import com.dexheimer.treeinspectorandroid.BuildConfig
+import com.dexheimer.treeinspectorandroid.core.util.SessionManager // Importante
 import com.dexheimer.treeinspectorandroid.data.remote.ApiService
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
-import okhttp3.JavaNetCookieJar
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
-import java.net.CookieManager
-import java.net.CookiePolicy
-import java.net.URL
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
@@ -21,43 +20,25 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 object NetworkModule {
 
-	@Provides
-	@Singleton
-	fun provideCookieManager(): CookieManager {
-		return CookieManager().apply {
-			setCookiePolicy(CookiePolicy.ACCEPT_ALL) // Aceita todos os cookies
-		}
-	}
+	// REMOVIDO: fun provideCookieManager()... não é mais necessário
 
 	@Provides
 	@Singleton
-	fun provideOkHttpClient(cookieManager: CookieManager): OkHttpClient {
-		val baseUrl = URL(BuildConfig.API_BASE_URL)
-		val apiHost = baseUrl.host
-		val origin = if (baseUrl.protocol == "https") "https://" else "http://"
+	fun provideOkHttpClient(
+		@ApplicationContext context: Context,
+		sessionManager: SessionManager // <--- Injeta o SessionManager
+	): OkHttpClient {
+
+		val authInterceptor = AuthInterceptor(context, sessionManager)
 
 		return OkHttpClient.Builder()
-			.cookieJar(JavaNetCookieJar(cookieManager)) // <--- CRÍTICO: Gerencia a sessão de forma persistente
-			.followRedirects(false)
-			.connectTimeout(30, TimeUnit.SECONDS)
-			.readTimeout(30, TimeUnit.SECONDS)
+			// .cookieJar(...) <--- REMOVIDO: Fazemos manual agora
+			.addInterceptor(authInterceptor) // O nosso interceptor cuida de tudo
 			.addInterceptor(HttpLoggingInterceptor().apply {
 				level = HttpLoggingInterceptor.Level.BODY
 			})
-			.addInterceptor { chain ->
-				val original = chain.request()
-				val requestBuilder = original.newBuilder()
-
-				// Cabeçalhos de Segurança (Host/Origin)
-				if (original.header("Host") == null) {
-					requestBuilder.header("Host", apiHost)
-				}
-				if (original.header("Origin") == null) {
-					requestBuilder.header("Origin", origin + apiHost)
-				}
-
-				chain.proceed(requestBuilder.build())
-			}
+			.connectTimeout(30, TimeUnit.SECONDS)
+			.readTimeout(30, TimeUnit.SECONDS)
 			.build()
 	}
 

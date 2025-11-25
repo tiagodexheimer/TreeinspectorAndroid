@@ -6,6 +6,6 @@ import androidx.room.PrimaryKey
 @Entity(tableName = "formularios_cache")
 data class FormularioCache(
 	@PrimaryKey
-	val tipoDemanda: String, // Ex: "Poda", "Supressão"
-	val jsonEstrutura: String // O JSON completo da definição dos campos
+	val tipoDemanda: String, // Chave primária
+	val jsonEstrutura: String // Conteúdo JSON
 )
