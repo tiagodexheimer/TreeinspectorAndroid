@@ -408,7 +408,12 @@ class RotaDetalheActivity : AppCompatActivity() {
 		return when (item.itemId) {
 			android.R.id.home -> { finish(); true }
 			R.id.action_optimize -> {
-				viewModel.otimizarRota()
+				// CORREÇÃO: Obter localização do usuário para a otimização
+				val userLocation = locationOverlay?.myLocation
+				val userLat = userLocation?.latitude
+				val userLng = userLocation?.longitude
+
+				viewModel.otimizarRota(userLat, userLng) // <--- Chamada agora passa Lat/Lng
 				Toast.makeText(this, "Rota otimizada", Toast.LENGTH_SHORT).show()
 				true
 			}
