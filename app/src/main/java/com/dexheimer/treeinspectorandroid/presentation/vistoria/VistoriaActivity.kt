@@ -72,14 +72,20 @@ class VistoriaActivity : AppCompatActivity() {
 	private var demandaAtual: Demanda? = null
 	private val formViews = mutableMapOf<String, View>()
 	private var fieldDefinitions = emptyList<FormField>()
-	private val fotosEstaticasBase64 = mutableListOf<String>()
+	private val fotosEstaticasFilePaths = mutableListOf<String>() // Armazena caminhos de arquivos
 
 	// --- Controle de Imagens, GPS e Permissões ---
 	private var currentPhotoField: String? = null
 	private var currentPhotoUri: Uri? = null
 	private var currentPhotoPath: String? = null
 	private var pendingFieldForPermission: String? = null
-	private var capturedLocation: Location? = null
+	private var capturedLocation: Location? = null // Última localização válida
+
+	// --- Constantes para salvar estado ---
+	private val STATE_PHOTO_FIELD = "photo_field_key"
+	private val STATE_PHOTO_PATH = "photo_path_key"
+	private val STATE_FIXED_PATHS = "fixed_paths_key"
+	private val STATE_LAST_LOCATION = "last_location_key" // Chave para a Localização
 
 	// 1. Permissões (Câmera e Localização)
 	private val requestPermissionsLauncher = registerForActivityResult(
@@ -102,6 +108,9 @@ class VistoriaActivity : AppCompatActivity() {
 			// Processa a foto para adicionar a marca d'água completa
 			processarFotoComDadosCompletos(currentPhotoPath!!, capturedLocation)
 		} else {
+			// Limpa o estado se a foto foi cancelada para evitar confusão na próxima tentativa
+			currentPhotoPath = null
+			currentPhotoField = null
 			Toast.makeText(this, "Foto cancelada.", Toast.LENGTH_SHORT).show()
 		}
 	}
@@ -118,6 +127,28 @@ class VistoriaActivity : AppCompatActivity() {
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
+
+		// --- CORREÇÃO: RESTAURAÇÃO DE ESTADO ---
+		savedInstanceState?.let {
+			currentPhotoField = it.getString(STATE_PHOTO_FIELD)
+			currentPhotoPath = it.getString(STATE_PHOTO_PATH)
+
+			// Restaura a lista de fotos estáticas
+			it.getStringArrayList(STATE_FIXED_PATHS)?.let { savedPaths ->
+				fotosEstaticasFilePaths.clear()
+				fotosEstaticasFilePaths.addAll(savedPaths)
+			}
+
+			// RESTAURAÇÃO DA ÚLTIMA LOCALIZAÇÃO VÁLIDA
+			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+				capturedLocation = it.getParcelable(STATE_LAST_LOCATION, Location::class.java)
+			} else {
+				@Suppress("DEPRECATION")
+				capturedLocation = it.getParcelable(STATE_LAST_LOCATION) as? Location
+			}
+		}
+		// ----------------------------------------
+
 		setContentView(R.layout.activity_vistoria)
 		setupUI()
 
@@ -136,6 +167,17 @@ class VistoriaActivity : AppCompatActivity() {
 			return
 		}
 
+		// RE-RENDERIZAÇÃO DE FOTOS ESTÁTICAS APÓS RESTORE
+		if (fotosEstaticasFilePaths.isNotEmpty()) {
+			containerFotosEstaticas.removeAllViews()
+			txtSemFotos.visibility = View.GONE
+			fotosEstaticasFilePaths.forEach { path ->
+				adicionarFotoViewEstatica(path) // Recria a UI com os caminhos restaurados
+			}
+		}
+		// --------------------------------------------------------------------
+
+
 		btnSalvar.setOnClickListener {
 			demandaAtual?.let { d ->
 				val respostas = coletarRespostas()
@@ -144,6 +186,21 @@ class VistoriaActivity : AppCompatActivity() {
 		}
 		observarViewModel()
 	}
+
+	// --- CORREÇÃO: IMPLEMENTAÇÃO DO onSaveInstanceState PARA ROTATION ---
+	override fun onSaveInstanceState(outState: Bundle) {
+		super.onSaveInstanceState(outState)
+		outState.putString(STATE_PHOTO_FIELD, currentPhotoField)
+		outState.putString(STATE_PHOTO_PATH, currentPhotoPath)
+		outState.putStringArrayList(STATE_FIXED_PATHS, ArrayList(fotosEstaticasFilePaths))
+
+		// SALVA A ÚLTIMA LOCALIZAÇÃO VÁLIDA
+		capturedLocation?.let {
+			outState.putParcelable(STATE_LAST_LOCATION, it)
+		}
+	}
+	// --------------------------------------------------------------------
+
 
 	// ------------------------------------------------------------------------
 	// LÓGICA DE MARCA D'ÁGUA COMPLETA (GPS + ENDEREÇO + DATA)
@@ -188,6 +245,7 @@ class VistoriaActivity : AppCompatActivity() {
 			}
 		}
 	}
+
 
 	/**
 	 * Retorna apenas a string do endereço legível, ou null se falhar.
@@ -242,11 +300,18 @@ class VistoriaActivity : AppCompatActivity() {
 	private fun abrirCameraSegura(fieldName: String, hasLocationPermission: Boolean) {
 		currentPhotoField = fieldName
 
-		// Tenta capturar GPS AGORA, antes de abrir a câmera
-		capturedLocation = if (hasLocationPermission) {
+		// Tenta capturar GPS AGORA
+		val newLocation = if (hasLocationPermission) {
 			obterLocalizacaoImediata()
 		} else {
 			null
+		}
+
+		// CORREÇÃO: Estratégia de Fallback e Cache:
+		// Se a nova localização for válida, use-a e salve-a.
+		// Senão, mantém a última localização válida (restaurada) em `capturedLocation`.
+		if (newLocation != null) {
+			capturedLocation = newLocation
 		}
 
 		val photoFile = criarArquivoImagem()
@@ -302,20 +367,24 @@ class VistoriaActivity : AppCompatActivity() {
 		txtDescricao.text = demandaAtual?.descricao
 	}
 
+	// Novo método auxiliar para adicionar a miniatura (reutilizado em onCreate)
+	private fun adicionarFotoViewEstatica(path: String) {
+		val imageView = ImageView(this).apply {
+			layoutParams = LinearLayout.LayoutParams(250, 250).apply { setMargins(0, 0, 16, 0) }
+			scaleType = ImageView.ScaleType.CENTER_CROP
+			setImageBitmap(BitmapFactory.decodeFile(path))
+			background = getDrawable(R.drawable.ic_launcher_background)
+		}
+		containerFotosEstaticas.addView(imageView)
+	}
+
 	private fun adicionarFotoNaTela(fieldName: String, path: String) {
 		if (fieldName == "FIELD_FIXED_PHOTOS") {
-			val base64Img = fileToBase64(path)
-			if (base64Img != null) {
-				fotosEstaticasBase64.add(base64Img)
-				txtSemFotos.visibility = View.GONE
-				val imageView = ImageView(this).apply {
-					layoutParams = LinearLayout.LayoutParams(250, 250).apply { setMargins(0, 0, 16, 0) }
-					scaleType = ImageView.ScaleType.CENTER_CROP
-					setImageBitmap(BitmapFactory.decodeFile(path))
-					background = getDrawable(R.drawable.ic_launcher_background)
-				}
-				containerFotosEstaticas.addView(imageView)
-			}
+			// Apenas armazena o caminho do arquivo para salvar o estado
+			fotosEstaticasFilePaths.add(path) // Salva o caminho
+			txtSemFotos.visibility = View.GONE
+			adicionarFotoViewEstatica(path) // Adiciona a miniatura
+
 		} else {
 			val viewContainer = formViews[fieldName]
 			viewContainer?.let { MultiPhotoRenderer.addPhotoToView(it, path) }
@@ -327,8 +396,11 @@ class VistoriaActivity : AppCompatActivity() {
 			repeatOnLifecycle(Lifecycle.State.STARTED) {
 				viewModel.uiState.collect { state ->
 					if (!progressBar.isIndeterminate) showLoading(state.isLoading)
-					val temConteudo = state.formFields.isNotEmpty() || fotosEstaticasBase64.isNotEmpty()
+
+					// Usa a lista de caminhos para checar se tem conteúdo
+					val temConteudo = state.formFields.isNotEmpty() || fotosEstaticasFilePaths.isNotEmpty()
 					btnSalvar.isEnabled = !state.isLoading && temConteudo
+
 					if (state.formFields.isNotEmpty() && fieldDefinitions != state.formFields) {
 						fieldDefinitions = state.formFields
 						renderDynamicForm(state.formFields)
@@ -361,7 +433,14 @@ class VistoriaActivity : AppCompatActivity() {
 				if (resp != null) respostas[campo.name] = resp
 			}
 		}
-		if (fotosEstaticasBase64.isNotEmpty()) respostas["fotos_evidencia"] = fotosEstaticasBase64
+
+		// Converte a lista de caminhos para Base64 AQUI
+		if (fotosEstaticasFilePaths.isNotEmpty()) {
+			val base64List = fotosEstaticasFilePaths.mapNotNull { filePath ->
+				fileToBase64(filePath)
+			}
+			respostas["fotos_evidencia"] = base64List
+		}
 		return respostas
 	}
 
