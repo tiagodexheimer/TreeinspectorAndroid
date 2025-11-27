@@ -35,8 +35,23 @@ object ImageWatermarkUtils {
 			}
 
 			// Posicionamento (Canto Inferior Esquerdo)
+			val linhas = watermarkText.split("\n")
+
+			// 1. Calcula a altura de uma única linha (ascendente - descendente)
+			val lineHeight = paint.descent() - paint.ascent()
+
+			// 2. Calcula a altura total do bloco de texto
+			val totalTextHeight = lineHeight * linhas.size
+
+			// 3. Define a margem inferior (ex: 40px)
+			val bottomMargin = 40f
+
+			// 4. Calcula o Y inicial para que a última linha fique na margem inferior
+			// Subtrai (Altura Total - Altura de uma Linha) e Margem.
+			var y = resultBitmap.height - bottomMargin - totalTextHeight + lineHeight
+
+			// Posicionamento X
 			val x = 40f
-			var y = resultBitmap.height - 150f
 
 			// Desenha cada linha do texto
 			watermarkText.split("\n").forEach { line ->
