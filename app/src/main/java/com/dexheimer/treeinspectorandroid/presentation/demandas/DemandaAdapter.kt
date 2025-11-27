@@ -1,3 +1,5 @@
+// tiagodexheimer/treeinspectorandroid/tiagodexheimer-TreeinspectorAndroid-cf552eb3d91ad81c716ea6e58b438954df45d51d/app/src/main/java/com/dexheimer/treeinspectorandroid/presentation/demandas/DemandaAdapter.kt
+
 package com.dexheimer.treeinspectorandroid.presentation.demandas
 
 import android.view.LayoutInflater
@@ -43,7 +45,8 @@ class DemandaAdapter(
 		holder.tipoTextView.text = "Tipo: ${demanda.tipoDemanda ?: "N/D"}"
 
 		// CORREÇÃO: status_vistoria -> statusVistoria
-		if (demanda.statusVistoria.equals("concluida", ignoreCase = true)) {
+		// CORREÇÃO APLICADA: Verifica se o status começa com "concluido" para incluir concluido_pendente
+		if (demanda.statusVistoria.startsWith("concluido", ignoreCase = true)) {
 			holder.statusTextView.text = "Concluída"
 			// CORREÇÃO: Usar o recurso de cor
 			holder.statusTextView.setTextColor(ContextCompat.getColor(holder.itemView.context, R.color.status_concluido))

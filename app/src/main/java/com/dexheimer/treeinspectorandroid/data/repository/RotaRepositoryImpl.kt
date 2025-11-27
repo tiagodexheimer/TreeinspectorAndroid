@@ -22,11 +22,8 @@ class RotaRepositoryImpl @Inject constructor(
 	private val formularioDao: FormularioDao // <--- INJETADO: Para salvar formulários offline
 ) : RotaRepository {
 
-	// ... (getRotas e getRotaDetalhes mantém a lógica existente) ...
-
 	override suspend fun getRotas(): Result<List<Rota>> = withContext(Dispatchers.IO) {
 		// Mantém implementação atual de cache-first ou network-first
-		// Recomendo: Tenta local primeiro para ser rápido, a sincronização forçada via swipe atualiza tudo.
 		val local = rotaDao.getAllRotas()
 		if (local.isNotEmpty()) {
 			Result.success(local.map { it.toDomain() })
@@ -47,19 +44,41 @@ class RotaRepositoryImpl @Inject constructor(
 	}
 
 	override suspend fun getRotaDetalhes(rotaId: Int): Result<Pair<Rota, List<Demanda>>> {
-		// ... (Sua implementação atual)
-		// OBS: Se não tiver local, tenta API.
 		return withContext(Dispatchers.IO) {
+
+			// PASSO 1: Carregar o status local atual ANTES de fazer qualquer chamada à API
+			val demandasLocais = demandaDao.getDemandasDaRota(rotaId)
+			val statusLocalMap = demandasLocais.associate { it.id to it.statusVistoria }
+
 			try {
 				val response = api.getRotaDetalhes(rotaId)
 				if (response.isSuccessful && response.body() != null) {
 					val data = response.body()!!
+
+					// PASSO 2: Mesclar o status local com a lista da API
+					val demandasEntities = data.demandas.map { dto ->
+						val entity = dto.toEntity(rotaId)
+						// Se houver um status local salvo e ele indicar que o trabalho foi feito, use-o
+						val localStatus = statusLocalMap[entity.id]
+						if (localStatus != null) {
+							if (localStatus.startsWith("concluido", ignoreCase = true)) {
+								entity.copy(statusVistoria = localStatus) // Preserva o status local
+							} else {
+								entity // Senão, usa o status padrão/API (que deve ser "pendente")
+							}
+						} else {
+							entity
+						}
+					}
+
+					// PASSO 3: Inserir (Com OnConflictStrategy.REPLACE no DAO, isso atualiza o registro)
 					rotaDao.insertRota(data.rota)
-					demandaDao.clearDemandasDaRota(rotaId)
-					val demandasEntities = data.demandas.map { it.toEntity(rotaId) }
+					// REMOVIDO: chamada a demandaDao.clearDemandasDaRota(rotaId)
 					demandaDao.insertAll(demandasEntities)
+
 					Result.success(Pair(data.rota.toDomain(), demandasEntities.map { it.toDomain() }))
 				} else {
+					// Lógica de fallback local
 					buscarLocalmente(rotaId)
 				}
 			} catch (e: Exception) {
@@ -78,7 +97,7 @@ class RotaRepositoryImpl @Inject constructor(
 		}
 	}
 
-	// --- AQUI ESTÁ A SOLUÇÃO CRÔNICA ---
+	// --- CORREÇÃO COMPLETA DE SINCRONIZAÇÃO (Rotas e Demandas) ---
 	override suspend fun sincronizarRotas(): Result<Unit> = withContext(Dispatchers.IO) {
 		try {
 			Log.d("Sync", "Iniciando Sincronização Completa...")
@@ -90,21 +109,40 @@ class RotaRepositoryImpl @Inject constructor(
 			}
 			val rotas = rotasResponse.body()!!
 
-			// Atualiza rotas no banco (limpa antigas se necessário ou usa Insert OnConflict)
-			rotaDao.deleteAll()
+			// CORREÇÃO ROTAS: Removemos o deleteAll() para manter o cache e apenas atualizamos com REPLACE
+			// rotaDao.deleteAll() // <--- REMOVIDO PARA EVITAR DEMANDAS ZERADAS
 			rotaDao.insertAll(rotas)
 
 			val tiposDeDemandaParaBaixar = mutableSetOf<String>()
 
 			// 2. Para CADA Rota, baixar os detalhes (demandas)
 			for (rota in rotas) {
+				// PASSO A: Carregar o status local antes de baixar o detalhe
+				val demandasLocais = demandaDao.getDemandasDaRota(rota.id)
+				val statusLocalMap = demandasLocais.associate { it.id to it.statusVistoria }
+
 				val detalheResponse = api.getRotaDetalhes(rota.id)
 				if (detalheResponse.isSuccessful && detalheResponse.body() != null) {
 					val dados = detalheResponse.body()!!
 
-					// Salva demandas no banco
-					val demandasEntities = dados.demandas.map { it.toEntity(rota.id) }
-					demandaDao.clearDemandasDaRota(rota.id) // Limpa versão antiga
+					// PASSO B: Mesclar o status local com a lista da API
+					val demandasEntities = dados.demandas.map { dto ->
+						val entity = dto.toEntity(rota.id)
+						val localStatus = statusLocalMap[entity.id]
+						if (localStatus != null) {
+							// Se a demanda foi concluída localmente, mantemos o status local
+							if (localStatus.startsWith("concluido", ignoreCase = true)) {
+								entity.copy(statusVistoria = localStatus)
+							} else {
+								entity
+							}
+						} else {
+							entity
+						}
+					}
+
+					// Salva demandas no banco (Com REPLACE, após o merge)
+					// REMOVIDO: demandaDao.clearDemandasDaRota(rota.id)
 					demandaDao.insertAll(demandasEntities)
 
 					// Coleta os tipos de demanda para baixar formulários depois
@@ -125,7 +163,6 @@ class RotaRepositoryImpl @Inject constructor(
 						val campos = formResponse.body()!!
 
 						// Salva no FormularioDao (Você precisará garantir que tem um método insert ou update)
-						// Assumindo que você tem uma entidade FormularioEntity ou similar
 						// Aqui uso o Cache que vi nos seus arquivos, ou DAO direto
 
 						// Exemplo de salvamento (Adapte para sua Entidade de Banco):

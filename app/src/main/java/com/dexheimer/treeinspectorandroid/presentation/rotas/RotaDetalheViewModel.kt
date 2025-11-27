@@ -57,6 +57,7 @@ class RotaDetalheViewModel @Inject constructor(
 				onSuccess = { pair ->
 					val rota = pair.first
 					val demandas = pair.second
+					// Quando carregamos do repositório, garantimos que a lista vem na ordem sequencial (por ID)
 					atualizarListas(rota, demandas)
 				},
 				onFailure = { e ->
@@ -75,13 +76,13 @@ class RotaDetalheViewModel @Inject constructor(
 			// 1. Atualiza no banco
 			demandaRepository.atualizarStatus(demandaId, novoStatus)
 
-			// 2. Atualiza o estado em memória (para a UI reagir instantaneamente)
-			val novasDemandas = _uiState.value.demandas.map {
+			// 2. Atualiza o estado em memória (IMPORTANTE: mantendo a ORDEM ATUAL - otimizada ou original)
+			val demandasNaOrdemAtual = _uiState.value.demandas.map {
 				if (it.id == demandaId) it.copy(statusVistoria = novoStatus) else it
 			}
 
-			// Recalcula pendentes e atualiza UI
-			atualizarListas(_uiState.value.rota, novasDemandas)
+			// Recalcula pendentes e atualiza UI, MANTENDO A ORDEM.
+			atualizarListas(_uiState.value.rota, demandasNaOrdemAtual)
 		}
 	}
 
@@ -95,8 +96,8 @@ class RotaDetalheViewModel @Inject constructor(
 		if (listaAtual.isEmpty()) return
 
 		// 1. Separa concluídas de pendentes
-		val concluidas = listaAtual.filter { it.statusVistoria != "pendente" }
-		val pendentes = listaAtual.filter { it.statusVistoria == "pendente" }.toMutableList()
+		val concluidas = listaAtual.filter { !it.statusVistoria.equals("pendente", ignoreCase = true) }
+		val pendentes = listaAtual.filter { it.statusVistoria.equals("pendente", ignoreCase = true) }.toMutableList()
 
 		if (pendentes.isEmpty()) return
 
@@ -104,7 +105,7 @@ class RotaDetalheViewModel @Inject constructor(
 		val pendentesOrdenadas = mutableListOf<Demanda>()
 
 		// Ponto de partida: última concluída ou a primeira pendente (se nenhuma foi feita ainda)
-		var pontoAtual = if (concluidas.isNotEmpty()) {
+		var pontoAtual: Demanda = if (concluidas.isNotEmpty()) {
 			concluidas.last()
 		} else {
 			// Remove a primeira para ser o ponto de partida
@@ -128,6 +129,7 @@ class RotaDetalheViewModel @Inject constructor(
 		val novaListaCompleta = concluidas + pendentesOrdenadas
 
 		// 4. Atualiza a UI com a nova ordem
+		// Agora 'atualizarListas' não reordena, então a otimização permanece.
 		atualizarListas(_uiState.value.rota, novaListaCompleta)
 	}
 
@@ -142,8 +144,10 @@ class RotaDetalheViewModel @Inject constructor(
 	}
 
 	private fun atualizarListas(rota: Rota?, demandas: List<Demanda>) {
+		// CORREÇÃO: Removemos a ordenação por ID aqui para não desfazer a otimização.
+		// A lista 'demandas' é a fonte de verdade para a ordem atual.
+
 		// Filtra as pendentes mantendo a ordem da lista 'demandas' passada
-		// (Removemos o .sortedBy antigo para que a otimização funcione)
 		val pendentes = demandas.filter {
 			it.statusVistoria.equals("pendente", ignoreCase = true)
 		}
@@ -151,6 +155,7 @@ class RotaDetalheViewModel @Inject constructor(
 		_uiState.value = _uiState.value.copy(
 			isLoading = false,
 			rota = rota,
+			// A lista 'demandas' (que alimenta a otimização) agora armazena a ordem atual
 			demandas = demandas,
 			demandasPendentes = pendentes,
 			error = null
