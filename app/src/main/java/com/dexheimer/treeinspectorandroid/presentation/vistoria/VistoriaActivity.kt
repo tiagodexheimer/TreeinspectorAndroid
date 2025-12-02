@@ -12,7 +12,9 @@ import android.location.LocationManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.util.Base64
+import android.os.Environment
+import android.provider.Settings
+import android.util.Log
 import android.view.View
 import android.widget.Button
 import android.widget.ImageView
@@ -22,7 +24,9 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.Toolbar
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
@@ -42,6 +46,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -59,7 +64,7 @@ class VistoriaActivity : AppCompatActivity() {
 	private lateinit var dynamicFormContainer: LinearLayout
 	private lateinit var btnSalvar: Button
 	private lateinit var progressBar: ProgressBar
-	private lateinit var toolbar: androidx.appcompat.widget.Toolbar
+	private lateinit var toolbar: Toolbar
 	private lateinit var txtTipoDemanda: TextView
 	private lateinit var txtEndereco: TextView
 	private lateinit var txtDescricao: TextView
@@ -72,22 +77,23 @@ class VistoriaActivity : AppCompatActivity() {
 	private var demandaAtual: Demanda? = null
 	private val formViews = mutableMapOf<String, View>()
 	private var fieldDefinitions = emptyList<FormField>()
-	private val fotosEstaticasFilePaths = mutableListOf<String>() // Armazena caminhos de arquivos
+	private val fotosEstaticasFilePaths = mutableListOf<String>()
+
+	private var isSaving = false
 
 	// --- Controle de Imagens, GPS e Permissões ---
 	private var currentPhotoField: String? = null
-	private var currentPhotoUri: Uri? = null
 	private var currentPhotoPath: String? = null
 	private var pendingFieldForPermission: String? = null
-	private var capturedLocation: Location? = null // Última localização válida
+	private var capturedLocation: Location? = null
 
 	// --- Constantes para salvar estado ---
 	private val STATE_PHOTO_FIELD = "photo_field_key"
 	private val STATE_PHOTO_PATH = "photo_path_key"
 	private val STATE_FIXED_PATHS = "fixed_paths_key"
-	private val STATE_LAST_LOCATION = "last_location_key" // Chave para a Localização
+	private val STATE_LAST_LOCATION = "last_location_key"
 
-	// 1. Permissões (Câmera e Localização)
+	// 1. Permissões
 	private val requestPermissionsLauncher = registerForActivityResult(
 		ActivityResultContracts.RequestMultiplePermissions()
 	) { permissions ->
@@ -95,62 +101,55 @@ class VistoriaActivity : AppCompatActivity() {
 		val locationGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
 
 		if (cameraGranted) {
-			// Tenta abrir a câmera mesmo se a localização for negada (vai sem GPS)
 			pendingFieldForPermission?.let { abrirCameraSegura(it, locationGranted) }
 		} else {
-			Toast.makeText(this, "Permissão de câmera é obrigatória.", Toast.LENGTH_LONG).show()
+			mostrarDialogoPermissaoNecessaria()
 		}
 	}
 
-	// 2. Launcher Câmera
+	// 2. Câmera
 	private val takePictureLauncher = registerForActivityResult(ActivityResultContracts.TakePicture()) { success ->
 		if (success && currentPhotoField != null && currentPhotoPath != null) {
-			// Processa a foto para adicionar a marca d'água completa
 			processarFotoComDadosCompletos(currentPhotoPath!!, capturedLocation)
 		} else {
-			// Limpa o estado se a foto foi cancelada para evitar confusão na próxima tentativa
 			currentPhotoPath = null
-			currentPhotoField = null
 			Toast.makeText(this, "Foto cancelada.", Toast.LENGTH_SHORT).show()
 		}
 	}
 
-	// 3. Launcher Galeria
+	// 3. Galeria
 	private val pickImageLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
 		if (uri != null && currentPhotoField != null) {
 			val localFile = copiarUriParaArquivo(uri)
 			if (localFile != null) {
-				adicionarFotoNaTela(currentPhotoField!!, localFile.absolutePath)
+				processarFotoComDadosCompletos(localFile.absolutePath, null)
+			} else {
+				Toast.makeText(this, "Erro ao processar imagem da galeria.", Toast.LENGTH_SHORT).show()
 			}
 		}
 	}
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
+		setContentView(R.layout.activity_vistoria)
 
-		// --- CORREÇÃO: RESTAURAÇÃO DE ESTADO ---
-		savedInstanceState?.let {
-			currentPhotoField = it.getString(STATE_PHOTO_FIELD)
-			currentPhotoPath = it.getString(STATE_PHOTO_PATH)
+		setupUI()
+		setupToolbar()
 
-			// Restaura a lista de fotos estáticas
-			it.getStringArrayList(STATE_FIXED_PATHS)?.let { savedPaths ->
+		savedInstanceState?.let { bundle ->
+			currentPhotoField = bundle.getString(STATE_PHOTO_FIELD)
+			currentPhotoPath = bundle.getString(STATE_PHOTO_PATH)
+			bundle.getStringArrayList(STATE_FIXED_PATHS)?.let { savedPaths ->
 				fotosEstaticasFilePaths.clear()
 				fotosEstaticasFilePaths.addAll(savedPaths)
 			}
-
-			// RESTAURAÇÃO DA ÚLTIMA LOCALIZAÇÃO VÁLIDA
 			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-				capturedLocation = it.getParcelable(STATE_LAST_LOCATION, Location::class.java)
+				capturedLocation = bundle.getParcelable(STATE_LAST_LOCATION, Location::class.java)
 			} else {
 				@Suppress("DEPRECATION")
-				capturedLocation = it.getParcelable(STATE_LAST_LOCATION) as? Location
+				capturedLocation = bundle.getParcelable(STATE_LAST_LOCATION) as? Location
 			}
 		}
-		// ----------------------------------------
-
-		setContentView(R.layout.activity_vistoria)
-		setupUI()
 
 		demandaAtual = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
 			intent.getSerializableExtra("DEMANDA_EXTRA", Demanda::class.java)
@@ -159,131 +158,228 @@ class VistoriaActivity : AppCompatActivity() {
 			intent.getSerializableExtra("DEMANDA_EXTRA") as? Demanda
 		}
 
+		val extraId = intent.getIntExtra("DEMANDA_ID", -1)
+
 		if (demandaAtual != null) {
 			preencherCabecalho()
 			demandaAtual?.tipoDemanda?.let { viewModel.buscarFormulario(it) }
+		} else if (extraId != -1) {
+			Toast.makeText(this, "Erro: Dados da demanda não encontrados.", Toast.LENGTH_LONG).show()
+			finish()
+			return
 		} else {
 			finish()
 			return
 		}
 
-		// RE-RENDERIZAÇÃO DE FOTOS ESTÁTICAS APÓS RESTORE
 		if (fotosEstaticasFilePaths.isNotEmpty()) {
 			containerFotosEstaticas.removeAllViews()
 			txtSemFotos.visibility = View.GONE
 			fotosEstaticasFilePaths.forEach { path ->
-				adicionarFotoViewEstatica(path) // Recria a UI com os caminhos restaurados
+				adicionarFotoViewEstatica(path)
 			}
 		}
-		// --------------------------------------------------------------------
-
 
 		btnSalvar.setOnClickListener {
-			demandaAtual?.let { d ->
-				val respostas = coletarRespostas()
-				viewModel.salvarVistoria(d, respostas)
-			}
+			salvarVistoria()
 		}
+
 		observarViewModel()
 	}
 
-	// --- CORREÇÃO: IMPLEMENTAÇÃO DO onSaveInstanceState PARA ROTATION ---
 	override fun onSaveInstanceState(outState: Bundle) {
 		super.onSaveInstanceState(outState)
 		outState.putString(STATE_PHOTO_FIELD, currentPhotoField)
 		outState.putString(STATE_PHOTO_PATH, currentPhotoPath)
 		outState.putStringArrayList(STATE_FIXED_PATHS, ArrayList(fotosEstaticasFilePaths))
+		capturedLocation?.let { outState.putParcelable(STATE_LAST_LOCATION, it) }
+	}
 
-		// SALVA A ÚLTIMA LOCALIZAÇÃO VÁLIDA
-		capturedLocation?.let {
-			outState.putParcelable(STATE_LAST_LOCATION, it)
+	private fun setupUI() {
+		dynamicFormContainer = findViewById(R.id.dynamicFormContainer)
+		btnSalvar = findViewById(R.id.btnSalvarVistoria)
+		progressBar = findViewById(R.id.progressBarForm)
+
+		txtTipoDemanda = findViewById(R.id.txtTipoDemanda)
+		txtEndereco = findViewById(R.id.txtEndereco)
+		txtDescricao = findViewById(R.id.txtDescricao)
+
+		btnFixedCamera = findViewById(R.id.btnFixedCamera)
+		btnFixedGallery = findViewById(R.id.btnFixedGallery)
+		containerFotosEstaticas = findViewById(R.id.containerFotosEstaticas)
+		txtSemFotos = findViewById(R.id.txtSemFotos)
+
+		btnFixedCamera.setOnClickListener { solicitarFoto("FIELD_FIXED_PHOTOS") }
+		btnFixedGallery.setOnClickListener { solicitarGaleria("FIELD_FIXED_PHOTOS") }
+	}
+
+	private fun setupToolbar() {
+		toolbar = findViewById(R.id.toolbar)
+		setSupportActionBar(toolbar)
+		supportActionBar?.setDisplayHomeAsUpEnabled(true)
+		supportActionBar?.title = "Vistoria ${demandaAtual?.protocolo ?: ""}"
+		toolbar.setNavigationOnClickListener { finish() }
+	}
+
+	private fun preencherCabecalho() {
+		txtTipoDemanda.text = demandaAtual?.tipoDemanda ?: "Tipo não informado"
+		txtEndereco.text = "${demandaAtual?.logradouro ?: ""}, ${demandaAtual?.numero ?: ""}"
+		txtDescricao.text = demandaAtual?.descricao ?: "Sem descrição"
+	}
+
+	private fun observarViewModel() {
+		lifecycleScope.launch {
+			repeatOnLifecycle(Lifecycle.State.STARTED) {
+				viewModel.uiState.collect { state ->
+					if (!progressBar.isIndeterminate) {
+						showLoading(state.isLoading)
+					}
+
+					if (state.formFields.isNotEmpty() && fieldDefinitions != state.formFields) {
+						fieldDefinitions = state.formFields
+						renderDynamicForm(state.formFields)
+					}
+
+					val temFormulario = state.formFields.isNotEmpty() || fotosEstaticasFilePaths.isNotEmpty()
+					btnSalvar.isEnabled = !state.isLoading && !isSaving && temFormulario
+
+					state.saveResult?.let { tratarResultadoSalvamento(it) }
+				}
+			}
 		}
 	}
-	// --------------------------------------------------------------------
 
+	private fun renderDynamicForm(campos: List<FormField>) {
+		dynamicFormContainer.removeAllViews()
+		formViews.clear()
 
-	// ------------------------------------------------------------------------
-	// LÓGICA DE MARCA D'ÁGUA COMPLETA (GPS + ENDEREÇO + DATA)
-	// ------------------------------------------------------------------------
+		for (campo in campos) {
+			val renderer = rendererFactory.getRenderer(campo.type)
+			if (renderer != null) {
+				val view = renderer.render(this, campo, dynamicFormContainer)
+				formViews[campo.name] = view
+				view.tag = campo.name
+			}
+		}
+	}
+
+	private fun salvarVistoria() {
+		if (isSaving || demandaAtual == null) return
+
+		isSaving = true
+		btnSalvar.isEnabled = false
+		showLoading(true)
+
+		val d = demandaAtual!!
+
+		lifecycleScope.launch(Dispatchers.IO) {
+			try {
+				val respostas = coletarRespostas()
+				withContext(Dispatchers.Main) {
+					viewModel.salvarVistoria(d, respostas)
+				}
+			} catch (e: Exception) {
+				withContext(Dispatchers.Main) {
+					isSaving = false
+					showLoading(false)
+					Toast.makeText(this@VistoriaActivity, "Erro ao processar dados: ${e.message}", Toast.LENGTH_SHORT).show()
+				}
+			}
+		}
+	}
+
+	private fun coletarRespostas(): Map<String, Any> {
+		val respostas = HashMap<String, Any>()
+
+		for (campo in fieldDefinitions) {
+			val view = formViews[campo.name]
+			val renderer = rendererFactory.getRenderer(campo.type)
+			if (view != null && renderer != null) {
+				val resp = renderer.collectResponse(view, campo)
+				if (resp != null) {
+					respostas[campo.name] = resp
+				}
+			}
+		}
+
+		if (fotosEstaticasFilePaths.isNotEmpty()) {
+			respostas["fotos_evidencia"] = ArrayList(fotosEstaticasFilePaths)
+		}
+
+		return respostas
+	}
 
 	private fun processarFotoComDadosCompletos(path: String, location: Location?) {
 		showLoading(true)
-
 		lifecycleScope.launch(Dispatchers.IO) {
-			// 1. Data e Hora
-			val dateFormat = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault())
-			val dateStr = dateFormat.format(Date())
-
-			// 2. Coordenadas GPS
+			val dateStr = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault()).format(Date())
 			val gpsStr = if (location != null) {
-				"Lat: ${String.format("%.6f", location.latitude)} | Lon: ${String.format("%.6f", location.longitude)}"
+				"Lat: ${String.format("%.5f", location.latitude)} | Lon: ${String.format("%.5f", location.longitude)}"
 			} else {
-				"GPS: Não capturado"
+				"GPS: Indisponível"
 			}
 
-			// 3. Endereço (Tenta buscar se tiver GPS)
 			var addressStr = ""
 			if (location != null) {
-				val enderecoEncontrado = getAddressString(location)
-				if (enderecoEncontrado != null) {
-					addressStr = "\n$enderecoEncontrado"
-				}
+				val end = getAddressString(location)
+				if (end != null) addressStr = "\n$end"
 			}
 
-			// 4. Monta o texto final (Data + GPS + Endereço)
-			val finalText = "$dateStr\n$gpsStr$addressStr"
-
-			// 5. Aplica na imagem
-			val sucesso = ImageWatermarkUtils.waterMarkImage(path, finalText)
+			val textoFinal = "$dateStr\n$gpsStr$addressStr"
+			val sucesso = ImageWatermarkUtils.waterMarkImage(path, textoFinal)
 
 			withContext(Dispatchers.Main) {
 				showLoading(false)
-				if (!sucesso) {
-					Toast.makeText(this@VistoriaActivity, "Aviso: Falha ao gravar marca d'água.", Toast.LENGTH_SHORT).show()
-				}
+				if (!sucesso) Log.w("VistoriaActivity", "Falha ao gravar marca d'água")
 				adicionarFotoNaTela(currentPhotoField!!, path)
 			}
 		}
 	}
 
-
-	/**
-	 * Retorna apenas a string do endereço legível, ou null se falhar.
-	 */
 	private fun getAddressString(location: Location): String? {
 		return try {
 			val geocoder = Geocoder(this, Locale.getDefault())
 			val addresses = geocoder.getFromLocation(location.latitude, location.longitude, 1)
-
 			if (!addresses.isNullOrEmpty()) {
-				val address = addresses[0]
-				val rua = address.thoroughfare ?: ""
-				val num = address.subThoroughfare ?: ""
-				val bairro = address.subLocality ?: address.locality ?: ""
+				val a = addresses[0]
+				"${a.thoroughfare ?: ""}, ${a.subThoroughfare ?: ""} - ${a.subLocality ?: ""}"
+			} else null
+		} catch (e: Exception) { null }
+	}
 
-				if (rua.isNotEmpty()) "$rua, $num - $bairro" else null
-			} else {
-				null
+	private fun adicionarFotoNaTela(fieldName: String, path: String) {
+		if (fieldName == "FIELD_FIXED_PHOTOS") {
+			fotosEstaticasFilePaths.add(path)
+			txtSemFotos.visibility = View.GONE
+			adicionarFotoViewEstatica(path)
+		} else {
+			val viewContainer = formViews[fieldName]
+			viewContainer?.let {
+				MultiPhotoRenderer.addPhotoToView(it, path)
 			}
-		} catch (e: Exception) {
-			null // Falha de rede ou serviço
 		}
 	}
 
-	// ------------------------------------------------------------------------
-	// FLUXO DE CÂMERA E PERMISSÕES
-	// ------------------------------------------------------------------------
+	private fun adicionarFotoViewEstatica(path: String) {
+		val imageView = ImageView(this).apply {
+			layoutParams = LinearLayout.LayoutParams(250, 250).apply { setMargins(0, 0, 16, 0) }
+			scaleType = ImageView.ScaleType.CENTER_CROP
+			val bmOptions = BitmapFactory.Options().apply { inSampleSize = 4 }
+			val bitmap = BitmapFactory.decodeFile(path, bmOptions)
+			setImageBitmap(bitmap)
+			background = ContextCompat.getDrawable(context, R.drawable.ic_launcher_background)
+		}
+		containerFotosEstaticas.addView(imageView)
+	}
 
 	fun solicitarFoto(fieldName: String) {
 		val hasCamera = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
 		val hasLocation = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
 		if (hasCamera) {
-			// Se já tem câmera, abre (tenta pegar localização se tiver permissão)
 			abrirCameraSegura(fieldName, hasLocation)
 		} else {
 			pendingFieldForPermission = fieldName
-			// Pede tudo de uma vez
 			requestPermissionsLauncher.launch(arrayOf(
 				Manifest.permission.CAMERA,
 				Manifest.permission.ACCESS_FINE_LOCATION,
@@ -299,187 +395,87 @@ class VistoriaActivity : AppCompatActivity() {
 
 	private fun abrirCameraSegura(fieldName: String, hasLocationPermission: Boolean) {
 		currentPhotoField = fieldName
-
-		// Tenta capturar GPS AGORA
-		val newLocation = if (hasLocationPermission) {
-			obterLocalizacaoImediata()
-		} else {
-			null
-		}
-
-		// CORREÇÃO: Estratégia de Fallback e Cache:
-		// Se a nova localização for válida, use-a e salve-a.
-		// Senão, mantém a última localização válida (restaurada) em `capturedLocation`.
-		if (newLocation != null) {
-			capturedLocation = newLocation
+		if (hasLocationPermission) {
+			val loc = obterLocalizacaoRapida()
+			if (loc != null) capturedLocation = loc
 		}
 
 		val photoFile = criarArquivoImagem()
 		if (photoFile != null) {
 			currentPhotoPath = photoFile.absolutePath
-			val photoUri = FileProvider.getUriForFile(this, "${packageName}.fileprovider", photoFile)
-			currentPhotoUri = photoUri
+			val photoUri = FileProvider.getUriForFile(
+				this,
+				"${packageName}.fileprovider", // Autoridade correta
+				photoFile
+			)
 			takePictureLauncher.launch(photoUri)
+		} else {
+			Toast.makeText(this, "Erro ao criar arquivo temporário.", Toast.LENGTH_SHORT).show()
 		}
 	}
 
-	private fun obterLocalizacaoImediata(): Location? {
-		val locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+	private fun obterLocalizacaoRapida(): Location? {
+		val locManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
 		return try {
 			if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-				// Tenta GPS preciso primeiro, depois Rede
-				locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-					?: locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
-			} else {
-				null
-			}
-		} catch (e: Exception) {
-			null
-		}
-	}
-
-	// ------------------------------------------------------------------------
-	// MÉTODOS PADRÃO DA ACTIVITY (UI, ViewModel, Helpers)
-	// ------------------------------------------------------------------------
-
-	private fun setupUI() {
-		toolbar = findViewById(R.id.toolbar)
-		setSupportActionBar(toolbar)
-		supportActionBar?.setDisplayHomeAsUpEnabled(true)
-		dynamicFormContainer = findViewById(R.id.dynamicFormContainer)
-		btnSalvar = findViewById(R.id.btnSalvarVistoria)
-		progressBar = findViewById(R.id.progressBarForm)
-		txtTipoDemanda = findViewById(R.id.txtTipoDemanda)
-		txtEndereco = findViewById(R.id.txtEndereco)
-		txtDescricao = findViewById(R.id.txtDescricao)
-		btnFixedCamera = findViewById(R.id.btnFixedCamera)
-		btnFixedGallery = findViewById(R.id.btnFixedGallery)
-		containerFotosEstaticas = findViewById(R.id.containerFotosEstaticas)
-		txtSemFotos = findViewById(R.id.txtSemFotos)
-
-		btnFixedCamera.setOnClickListener { solicitarFoto("FIELD_FIXED_PHOTOS") }
-		btnFixedGallery.setOnClickListener { solicitarGaleria("FIELD_FIXED_PHOTOS") }
-	}
-
-	private fun preencherCabecalho() {
-		txtTipoDemanda.text = demandaAtual?.tipoDemanda ?: ""
-		txtEndereco.text = "${demandaAtual?.logradouro}, ${demandaAtual?.numero}"
-		txtDescricao.text = demandaAtual?.descricao
-	}
-
-	// Novo método auxiliar para adicionar a miniatura (reutilizado em onCreate)
-	private fun adicionarFotoViewEstatica(path: String) {
-		val imageView = ImageView(this).apply {
-			layoutParams = LinearLayout.LayoutParams(250, 250).apply { setMargins(0, 0, 16, 0) }
-			scaleType = ImageView.ScaleType.CENTER_CROP
-			setImageBitmap(BitmapFactory.decodeFile(path))
-			background = getDrawable(R.drawable.ic_launcher_background)
-		}
-		containerFotosEstaticas.addView(imageView)
-	}
-
-	private fun adicionarFotoNaTela(fieldName: String, path: String) {
-		if (fieldName == "FIELD_FIXED_PHOTOS") {
-			// Apenas armazena o caminho do arquivo para salvar o estado
-			fotosEstaticasFilePaths.add(path) // Salva o caminho
-			txtSemFotos.visibility = View.GONE
-			adicionarFotoViewEstatica(path) // Adiciona a miniatura
-
-		} else {
-			val viewContainer = formViews[fieldName]
-			viewContainer?.let { MultiPhotoRenderer.addPhotoToView(it, path) }
-		}
-	}
-
-	private fun observarViewModel() {
-		lifecycleScope.launch {
-			repeatOnLifecycle(Lifecycle.State.STARTED) {
-				viewModel.uiState.collect { state ->
-					if (!progressBar.isIndeterminate) showLoading(state.isLoading)
-
-					// Usa a lista de caminhos para checar se tem conteúdo
-					val temConteudo = state.formFields.isNotEmpty() || fotosEstaticasFilePaths.isNotEmpty()
-					btnSalvar.isEnabled = !state.isLoading && temConteudo
-
-					if (state.formFields.isNotEmpty() && fieldDefinitions != state.formFields) {
-						fieldDefinitions = state.formFields
-						renderDynamicForm(state.formFields)
-					}
-					state.saveResult?.let { tratarResultadoSalvamento(it) }
-				}
-			}
-		}
-	}
-
-	private fun renderDynamicForm(campos: List<FormField>) {
-		dynamicFormContainer.removeAllViews()
-		formViews.clear()
-		for (campo in campos) {
-			val renderer = rendererFactory.getRenderer(campo.type)
-			if (renderer != null) {
-				val view = renderer.render(this, campo, dynamicFormContainer)
-				formViews[campo.name] = view
-			}
-		}
-	}
-
-	private fun coletarRespostas(): Map<String, Any> {
-		val respostas = HashMap<String, Any>()
-		for (campo in fieldDefinitions) {
-			val view = formViews[campo.name]
-			val renderer = rendererFactory.getRenderer(campo.type)
-			if (view != null && renderer != null) {
-				val resp = renderer.collectResponse(view, campo)
-				if (resp != null) respostas[campo.name] = resp
-			}
-		}
-
-		// Converte a lista de caminhos para Base64 AQUI
-		if (fotosEstaticasFilePaths.isNotEmpty()) {
-			val base64List = fotosEstaticasFilePaths.mapNotNull { filePath ->
-				fileToBase64(filePath)
-			}
-			respostas["fotos_evidencia"] = base64List
-		}
-		return respostas
+				val gps = locManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+				val net = locManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+				gps ?: net
+			} else null
+		} catch (e: Exception) { null }
 	}
 
 	private fun criarArquivoImagem(): File? {
-		val timeStamp: String = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-		val storageDir: File? = getExternalFilesDir(android.os.Environment.DIRECTORY_PICTURES)
-		return try { File.createTempFile("JPEG_${timeStamp}_", ".jpg", storageDir) } catch (e: Exception) { null }
+		val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+		val storageDir = getExternalFilesDir(Environment.DIRECTORY_PICTURES)
+		return try {
+			File.createTempFile("JPEG_${timeStamp}_", ".jpg", storageDir)
+		} catch (e: IOException) { null }
 	}
 
-	private fun copyingUriParaArquivo(uri: Uri): File? {
+	private fun copiarUriParaArquivo(uri: Uri): File? {
 		return try {
 			val inputStream = contentResolver.openInputStream(uri)
 			val file = criarArquivoImagem()
-			val outputStream = FileOutputStream(file)
-			inputStream?.use { input -> outputStream.use { output -> input.copyTo(output) } }
-			file
+			if (inputStream != null && file != null) {
+				val outputStream = FileOutputStream(file)
+				inputStream.copyTo(outputStream)
+				inputStream.close()
+				outputStream.close()
+				file
+			} else null
 		} catch (e: Exception) { null }
 	}
-	private fun copiarUriParaArquivo(uri: Uri) = copyingUriParaArquivo(uri)
 
-	private fun fileToBase64(filePath: String): String? {
-		return try {
-			val bytes = File(filePath).readBytes()
-			val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
-			"data:image/jpeg;base64,$base64"
-		} catch (e: Exception) { null }
+	private fun mostrarDialogoPermissaoNecessaria() {
+		AlertDialog.Builder(this)
+			.setTitle("Permissões Necessárias")
+			.setMessage("Para registrar a vistoria com evidências, precisamos de acesso à câmera e localização.")
+			.setPositiveButton("Configurações") { _, _ ->
+				val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+				intent.data = Uri.fromParts("package", packageName, null)
+				startActivity(intent)
+			}
+			.setNegativeButton("Cancelar", null)
+			.show()
 	}
 
 	private fun showLoading(isLoading: Boolean) {
 		progressBar.visibility = if (isLoading) View.VISIBLE else View.GONE
+		btnSalvar.isEnabled = !isLoading && !isSaving
 	}
 
+	// --- CORREÇÃO DO ERRO ---
 	private fun tratarResultadoSalvamento(result: SaveResult) {
 		when (result) {
-			is SaveResult.SuccessOnline -> finalizarComSucesso("Vistoria enviada!", "concluido")
-			is SaveResult.SuccessOffline -> finalizarComSucesso("Salvo offline.", "concluido_pendente")
+			is SaveResult.Success -> {
+				// Mensagem de sucesso (Offline First)
+				finalizarComSucesso("Vistoria salva! Sincronizando...", "concluido_pendente")
+			}
 			is SaveResult.Failure -> {
+				showLoading(false)
+				isSaving = false
 				Toast.makeText(this, "Erro: ${result.message}", Toast.LENGTH_LONG).show()
-				btnSalvar.isEnabled = true
 			}
 		}
 	}
@@ -493,6 +489,4 @@ class VistoriaActivity : AppCompatActivity() {
 		setResult(Activity.RESULT_OK, resultIntent)
 		finish()
 	}
-
-	override fun onSupportNavigateUp(): Boolean { finish(); return true }
 }

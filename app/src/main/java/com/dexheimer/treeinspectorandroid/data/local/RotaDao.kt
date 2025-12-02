@@ -24,4 +24,7 @@ interface RotaDao {
 	// Corrigindo 'deleteAll'
 	@Query("DELETE FROM rotas")
 	suspend fun deleteAll()
+
+	@Query("DELETE FROM rotas WHERE id NOT IN (:currentIds)")
+	suspend fun deleteRotasExcluidas(currentIds: List<Int>)
 }

@@ -3,10 +3,13 @@ package com.dexheimer.treeinspectorandroid.data.remote
 import com.dexheimer.treeinspectorandroid.data.local.RotaEntity
 import com.dexheimer.treeinspectorandroid.domain.model.Demanda
 import com.google.gson.annotations.SerializedName
+import okhttp3.MultipartBody
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
+import retrofit2.http.Multipart
 import retrofit2.http.POST
+import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -24,6 +27,10 @@ data class LoginRequest(
 	val csrfToken: String? = null,
 	val callbackUrl: String? = null,
 	val json: Boolean = true
+)
+
+data class UploadResponse(
+	val url: String
 )
 
 // --- Data Classes para Resposta (Responses) ---
@@ -83,4 +90,11 @@ interface ApiService {
 
 	@POST("api/mobile/salvar-vistoria")
 	suspend fun salvarVistoria(@Body request: VistoriaRequest): Response<Void>
+
+	@Multipart
+	@POST("api/mobile/upload")
+	suspend fun uploadImage(
+		@Part file: MultipartBody.Part,
+		@Query("filename") filename: String? = null
+	): Response<UploadResponse>
 }

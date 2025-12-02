@@ -23,7 +23,6 @@ class RotaRepositoryImpl @Inject constructor(
 ) : RotaRepository {
 
 	override suspend fun getRotas(): Result<List<Rota>> = withContext(Dispatchers.IO) {
-		// Mantém implementação atual de cache-first ou network-first
 		val local = rotaDao.getAllRotas()
 		if (local.isNotEmpty()) {
 			Result.success(local.map { it.toDomain() })
@@ -58,7 +57,6 @@ class RotaRepositoryImpl @Inject constructor(
 					// PASSO 2: Mesclar o status local com a lista da API
 					val demandasEntities = data.demandas.map { dto ->
 						val entity = dto.toEntity(rotaId)
-						// Se houver um status local salvo e ele indicar que o trabalho foi feito, use-o
 						val localStatus = statusLocalMap[entity.id]
 						if (localStatus != null) {
 							if (localStatus.startsWith("concluido", ignoreCase = true)) {
@@ -73,7 +71,6 @@ class RotaRepositoryImpl @Inject constructor(
 
 					// PASSO 3: Inserir (Com OnConflictStrategy.REPLACE no DAO, isso atualiza o registro)
 					rotaDao.insertRota(data.rota)
-					// REMOVIDO: chamada a demandaDao.clearDemandasDaRota(rotaId)
 					demandaDao.insertAll(demandasEntities)
 
 					Result.success(Pair(data.rota.toDomain(), demandasEntities.map { it.toDomain() }))
@@ -97,21 +94,27 @@ class RotaRepositoryImpl @Inject constructor(
 		}
 	}
 
-	// --- CORREÇÃO COMPLETA DE SINCRONIZAÇÃO (Rotas e Demandas) ---
+	// --- CORREÇÃO DE EXCLUSÃO DE ROTAS ---
 	override suspend fun sincronizarRotas(): Result<Unit> = withContext(Dispatchers.IO) {
-		try {
+		// Use runCatching para garantir que até erros graves como OOM sejam tratados
+		return@withContext runCatching {
 			Log.d("Sync", "Iniciando Sincronização Completa...")
 
 			// 1. Baixar Lista de Rotas
 			val rotasResponse = api.getRotas()
 			if (!rotasResponse.isSuccessful || rotasResponse.body() == null) {
-				return@withContext Result.failure(Exception("Falha ao baixar rotas"))
+				throw Exception("Falha ao baixar rotas: ${rotasResponse.code()}")
 			}
 			val rotas = rotasResponse.body()!!
 
-			// CORREÇÃO ROTAS: Removemos o deleteAll() para manter o cache e apenas atualizamos com REPLACE
-			// rotaDao.deleteAll() // <--- REMOVIDO PARA EVITAR DEMANDAS ZERADAS
+			// 1.1 Coleta IDs do servidor
+			val currentIds = rotas.map { it.id }
+
+			// CORREÇÃO ROTAS: Mantemos o cache e apenas atualizamos com REPLACE
 			rotaDao.insertAll(rotas)
+
+			// CORREÇÃO EXCLUSÃO: Remove rotas locais que não estão mais no servidor.
+			rotaDao.deleteRotasExcluidas(currentIds)
 
 			val tiposDeDemandaParaBaixar = mutableSetOf<String>()
 
@@ -142,7 +145,6 @@ class RotaRepositoryImpl @Inject constructor(
 					}
 
 					// Salva demandas no banco (Com REPLACE, após o merge)
-					// REMOVIDO: demandaDao.clearDemandasDaRota(rota.id)
 					demandaDao.insertAll(demandasEntities)
 
 					// Coleta os tipos de demanda para baixar formulários depois
@@ -156,30 +158,26 @@ class RotaRepositoryImpl @Inject constructor(
 			val gson = Gson()
 			for (tipo in tiposDeDemandaParaBaixar) {
 				try {
-					// Verifica se já temos o formulário atualizado (opcional, mas bom pra performance)
-					// Se não, baixa da API
 					val formResponse = api.getFormularioPorTipo(tipo)
 					if (formResponse.isSuccessful && formResponse.body() != null) {
 						val campos = formResponse.body()!!
-
-						// Salva no FormularioDao (Você precisará garantir que tem um método insert ou update)
-						// Aqui uso o Cache que vi nos seus arquivos, ou DAO direto
-
-						// Exemplo de salvamento (Adapte para sua Entidade de Banco):
 						formularioDao.insertOrUpdate(tipo, gson.toJson(campos))
-
 						Log.d("Sync", "Formulário para '$tipo' baixado com sucesso.")
 					}
 				} catch (e: Exception) {
 					Log.e("Sync", "Erro ao baixar formulário de $tipo", e)
-					// Não abortamos tudo se um formulário falhar, tentamos os outros
 				}
 			}
 
-			Result.success(Unit)
-		} catch (e: Exception) {
-			Log.e("Sync", "Erro fatal na sincronização", e)
-			Result.failure(e)
-		}
+			Log.d("Sync", "Sincronização concluída. Retornando sucesso.")
+			Unit // Retorna Unit como sucesso
+		}.fold(
+			onSuccess = { Result.success(Unit) },
+			onFailure = { e ->
+				Log.e("Sync", "ERRO FATAL DURANTE A SINCRONIZAÇÃO. Motivo: ${e.message}", e)
+				// Converte Throwable em uma Exception amigável
+				Result.failure(Exception("Erro fatal na sincronização: ${e.message ?: "Desconhecido"}"))
+			}
+		)
 	}
 }

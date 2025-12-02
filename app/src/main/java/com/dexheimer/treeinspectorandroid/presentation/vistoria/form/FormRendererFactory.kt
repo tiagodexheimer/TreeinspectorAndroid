@@ -9,6 +9,7 @@ import javax.inject.Inject
 class FormRendererFactory @Inject constructor(
 	// O Hilt injeta um Set de todos os FormFieldRenderer's criados.
 	private val renderers: Set<@JvmSuppressWildcards FormFieldRenderer>
+
 ) {
 	// Mapa para busca rápida: "text" -> TextFieldRenderer
 	private val rendererMap: Map<String, FormFieldRenderer> = buildMap {
