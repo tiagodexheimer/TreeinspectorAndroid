@@ -37,7 +37,7 @@ class SalvarVistoriaUseCase @Inject constructor(
 
 			// 3. Salva no banco local e marca demanda como "Aguardando Sincronização"
 			vistoriaDao.adicionarFila(vistoriaPendente)
-			demandaDao.updateStatus(demandaId, "concluido_pendente")
+			demandaDao.updateStatus(demandaId, "Concluída")
 
 			// 4. Agenda o Worker para rodar assim que tiver internet
 			agendarSincronizacao()

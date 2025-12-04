@@ -362,11 +362,27 @@ class RotaDetalheActivity : AppCompatActivity() {
 	private fun iniciarRotaGoogleMaps() {
 		val lat = proximaDemanda?.lat
 		val lng = proximaDemanda?.lng
+
+		// 1. Muda status IMEDIATAMENTE
+		proximaDemanda?.let {
+			viewModel.iniciarAtendimento(it.id)
+
+			// Opcional: Atualizar o texto do card manualmente para feedback instantâneo
+			// enquanto o Maps carrega
+			tituloProximaParada.text = "Em Rota - ${it.tipoDemanda}"
+		}
+
+		// 2. Abre Maps
 		if (lat != null && lng != null) {
 			val uri = Uri.parse("google.navigation:q=$lat,$lng")
 			val intent = Intent(Intent.ACTION_VIEW, uri)
 			intent.setPackage("com.google.android.apps.maps")
-			startActivity(intent)
+			try {
+				startActivity(intent)
+			} catch (e: Exception) {
+				// Fallback se não tiver Google Maps
+				startActivity(Intent(Intent.ACTION_VIEW, uri))
+			}
 		} else {
 			Toast.makeText(this, "Coordenadas indisponíveis", Toast.LENGTH_SHORT).show()
 		}
@@ -374,11 +390,16 @@ class RotaDetalheActivity : AppCompatActivity() {
 
 	private fun abrirVistoriaProximaDemanda() {
 		proximaDemanda?.let { demanda ->
+			// [CORRIGIDO] Chama a função no ViewModel
+			viewModel.iniciarAtendimento(demanda.id)
+
+			// Abre a tela de Vistoria normalmente
 			val intent = Intent(this, VistoriaActivity::class.java)
 			intent.putExtra("DEMANDA_EXTRA", demanda)
 			vistoriaLauncher.launch(intent)
 		}
 	}
+
 
 	private fun abrirListaDeDemandas() {
 		val intent = Intent(this, DemandaListActivity::class.java)

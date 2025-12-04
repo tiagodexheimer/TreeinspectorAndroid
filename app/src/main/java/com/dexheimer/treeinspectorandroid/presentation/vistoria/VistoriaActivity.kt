@@ -340,11 +340,31 @@ class VistoriaActivity : AppCompatActivity() {
 		return try {
 			val geocoder = Geocoder(this, Locale.getDefault())
 			val addresses = geocoder.getFromLocation(location.latitude, location.longitude, 1)
+
 			if (!addresses.isNullOrEmpty()) {
 				val a = addresses[0]
-				"${a.thoroughfare ?: ""}, ${a.subThoroughfare ?: ""} - ${a.subLocality ?: ""}"
-			} else null
-		} catch (e: Exception) { null }
+
+				// Dados básicos
+				val rua = a.thoroughfare ?: ""
+				val numero = a.subThoroughfare ?: ""
+				val bairro = a.subLocality ?: ""
+
+				// [NOVO] Cidade e Estado
+				val cidade = a.locality ?: a.subAdminArea ?: "" // Tenta cidade, senão microrregião
+				val estado = a.adminArea ?: "" // Estado (UF)
+
+				// Monta a string: "Rua X, 123 - Bairro\nCidade - UF"
+				val linha1 = if (rua.isNotEmpty()) "$rua, $numero" else ""
+				val linha2 = if (bairro.isNotEmpty()) " - $bairro" else ""
+				val linha3 = if (cidade.isNotEmpty()) "\n$cidade - $estado" else ""
+
+				"$linha1$linha2$linha3"
+			} else {
+				null
+			}
+		} catch (e: Exception) {
+			null
+		}
 	}
 
 	private fun adicionarFotoNaTela(fieldName: String, path: String) {

@@ -29,13 +29,12 @@ data class RotaDetalheUiState(
 class RotaDetalheViewModel @Inject constructor(
 	private val rotaRepository: RotaRepository,
 	private val demandaRepository: DemandaRepository,
-	savedStateHandle: SavedStateHandle // Para pegar o ID da rota passado via Intent automaticamente
+	savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
 	private val _uiState = MutableStateFlow(RotaDetalheUiState())
 	val uiState: StateFlow<RotaDetalheUiState> = _uiState.asStateFlow()
 
-	// O Hilt pega automaticamente o "ROTA_ID" que veio no Intent da Activity
 	private val rotaId: Int = savedStateHandle.get<Int>("ROTA_ID") ?: -1
 
 	init {
@@ -49,53 +48,71 @@ class RotaDetalheViewModel @Inject constructor(
 	fun carregarDados() {
 		viewModelScope.launch {
 			_uiState.value = _uiState.value.copy(isLoading = true)
-
-			// Chama o repositório (que já decide se pega do banco ou API)
 			val result = rotaRepository.getRotaDetalhes(rotaId)
-
 			result.fold(
 				onSuccess = { pair ->
 					val rota = pair.first
 					val demandas = pair.second
-					// Quando carregamos do repositório, garantimos que a lista vem na ordem sequencial (por ID)
 					atualizarListas(rota, demandas)
 				},
 				onFailure = { e ->
-					_uiState.value = _uiState.value.copy(
-						isLoading = false,
-						error = e.message ?: "Erro ao carregar rota"
-					)
+					_uiState.value = _uiState.value.copy(isLoading = false, error = e.message ?: "Erro ao carregar rota")
 				}
 			)
 		}
 	}
 
-	// Chamado quando voltamos da tela de vistoria para atualizar o status
 	fun atualizarStatusDemanda(demandaId: Int, novoStatus: String) {
 		viewModelScope.launch {
-			// 1. Atualiza no banco
 			demandaRepository.atualizarStatus(demandaId, novoStatus)
-
-			// 2. Atualiza o estado em memória (IMPORTANTE: mantendo a ORDEM ATUAL - otimizada ou original)
 			val demandasNaOrdemAtual = _uiState.value.demandas.map {
 				if (it.id == demandaId) it.copy(statusVistoria = novoStatus) else it
 			}
-
-			// Recalcula pendentes e atualiza UI, MANTENDO A ORDEM.
 			atualizarListas(_uiState.value.rota, demandasNaOrdemAtual)
 		}
 	}
 
-	/**
-	 * Algoritmo do Vizinho Mais Próximo (Nearest Neighbor).
-	 * Reordena as demandas pendentes baseando-se na proximidade geográfica,
-	 * partindo da localização do usuário ou da última demanda concluída.
-	 */
-	fun otimizarRota(userLat: Double?, userLng: Double?) { // <--- NOVO: Recebe localização do usuário
+	// --- [NOVO] Função adicionada aqui dentro do ViewModel ---
+	fun iniciarAtendimento(demandaId: Int) {
+		viewModelScope.launch {
+			// 1. Atualiza Banco
+			demandaRepository.atualizarStatus(demandaId, "Em Rota")
+
+			// 2. Atualiza Memória
+			val listaAtual = _uiState.value.demandas
+			val novaLista = listaAtual.map { demanda ->
+				if (demanda.id == demandaId) {
+					// Cria uma cópia com o novo status
+					demanda.copy(
+						statusVistoria = "Em Rota",
+						statusNome = "Em Rota" // Atualiza o nome visual também se houver
+					)
+				} else {
+					demanda
+				}
+			}
+
+			// 3. Atualiza StateFlow
+			// Nota: Precisamos ajustar a lógica de "pendentes" para que o card continue aparecendo
+			// Se "Em Rota" sumir da lista de pendentes, o card some.
+			val pendentesAtualizados = novaLista.filter {
+				val s = it.statusVistoria?.lowercase() ?: ""
+				// Mantém na lista se for "pendente" OU "em rota"
+				s == "pendente" || s == "em rota"
+			}
+
+			_uiState.value = _uiState.value.copy(
+				demandas = novaLista,
+				demandasPendentes = pendentesAtualizados
+			)
+		}
+	}
+	// --------------------------------------------------------
+
+	fun otimizarRota(userLat: Double?, userLng: Double?) {
 		val listaAtual = _uiState.value.demandas
 		if (listaAtual.isEmpty()) return
 
-		// 1. Separa concluídas de pendentes
 		val concluidas = listaAtual.filter { !it.statusVistoria.equals("pendente", ignoreCase = true) }
 		val pendentes = listaAtual.filter { it.statusVistoria.equals("pendente", ignoreCase = true) }.toMutableList()
 
@@ -105,10 +122,7 @@ class RotaDetalheViewModel @Inject constructor(
 		var pontoDeReferencia: Demanda? = null
 		var primeiraDemandaOtimizada: Demanda? = null
 
-		// 2. DEFINIÇÃO DO PONTO INICIAL E PRIMEIRA DEMANDA OTIMIZADA
-
 		if (userLat != null && userLng != null) {
-			// Cria uma demanda virtual para calcular a distância
 			val pontoUsuario = Demanda(
 				id = -1, lat = userLat, lng = userLng, statusVistoria = "temp", rotaId = rotaId,
 				statusNome = null, statusCor = null, protocolo = null, nomeSolicitante = null,
@@ -117,73 +131,53 @@ class RotaDetalheViewModel @Inject constructor(
 				complemento = null, bairro = null, cidade = null, uf = null, tipoDemanda = null,
 				descricao = null, geom = null
 			)
-
-			// 2.1 Encontra o vizinho mais próximo do USUÁRIO (Ponto Virtual)
-			primeiraDemandaOtimizada = pendentes.minByOrNull { candidato ->
-				calcularDistancia(pontoUsuario, candidato)
-			}
+			primeiraDemandaOtimizada = pendentes.minByOrNull { calcularDistancia(pontoUsuario, it) }
 		}
 
-		// 2.2 Define o ponto de partida para a iteração (Ponto Real - Demanda)
 		if (primeiraDemandaOtimizada != null) {
-			// Remove a primeira demanda otimizada da lista de pendentes e a adiciona à nova lista
 			pendentes.remove(primeiraDemandaOtimizada)
 			pendentesOrdenadas.add(primeiraDemandaOtimizada)
-			pontoDeReferencia = primeiraDemandaOtimizada // O ponto de referência é a primeira demanda otimizada
+			pontoDeReferencia = primeiraDemandaOtimizada
 		} else if (concluidas.isNotEmpty()) {
-			// Fallback: Última concluída (Ponto Real - Demanda)
 			pontoDeReferencia = concluidas.last()
 		} else if (pendentes.isNotEmpty()) {
-			// Fallback Final: Primeira pendente da lista original (Ponto Real - Demanda)
 			pontoDeReferencia = pendentes.removeAt(0).also { pendentesOrdenadas.add(it) }
 		}
 
-		// 3. CONSTRÓI O RESTANTE DA ROTA
-
 		if (pontoDeReferencia != null) {
 			var pontoAtual = pontoDeReferencia!!
-
 			while (pendentes.isNotEmpty()) {
-				// Encontra qual das pendentes restantes está mais perto do pontoAtual
-				val vizinhoMaisProximo = pendentes.minByOrNull { candidato ->
-					calcularDistancia(pontoAtual, candidato)
-				}
-
+				val vizinhoMaisProximo = pendentes.minByOrNull { calcularDistancia(pontoAtual, it) }
 				vizinhoMaisProximo?.let {
 					pendentesOrdenadas.add(it)
 					pendentes.remove(it)
-					pontoAtual = it // O vizinho vira o novo ponto de referência
+					pontoAtual = it
 				}
 			}
 		}
-
-		// 4. Reconstroi a lista completa: Concluídas (fixas) + Pendentes (reordenadas)
 		val novaListaCompleta = concluidas + pendentesOrdenadas
-
-		// 5. Atualiza a UI com a nova ordem
 		atualizarListas(_uiState.value.rota, novaListaCompleta)
 	}
 
-	// Cálculo simples de distância Euclidiana (suficiente para ordenação visual local)
 	private fun calcularDistancia(d1: Demanda, d2: Demanda): Double {
 		val lat1 = d1.lat ?: 0.0
 		val lng1 = d1.lng ?: 0.0
 		val lat2 = d2.lat ?: 0.0
 		val lng2 = d2.lng ?: 0.0
-
 		return sqrt((lat1 - lat2).pow(2) + (lng1 - lng2).pow(2))
 	}
 
 	private fun atualizarListas(rota: Rota?, demandas: List<Demanda>) {
-		// Filtra as pendentes mantendo a ordem da lista 'demandas' passada
+		// [CORREÇÃO] O filtro agora aceita "pendente" OU "em rota"
+		// Isso garante que a demanda que você acabou de iniciar continue aparecendo no card "Próxima Parada"
 		val pendentes = demandas.filter {
-			it.statusVistoria.equals("pendente", ignoreCase = true)
+			val status = it.statusVistoria?.lowercase() ?: ""
+			status == "pendente" || status == "em rota"
 		}
 
 		_uiState.value = _uiState.value.copy(
 			isLoading = false,
 			rota = rota,
-			// A lista 'demandas' (que alimenta a otimização) armazena a ordem atual (otimizada ou sequencial)
 			demandas = demandas,
 			demandasPendentes = pendentes,
 			error = null

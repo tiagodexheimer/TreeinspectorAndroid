@@ -9,6 +9,7 @@ import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Multipart
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.Query
@@ -97,4 +98,11 @@ interface ApiService {
 		@Part file: MultipartBody.Part,
 		@Query("filename") filename: String? = null
 	): Response<UploadResponse>
+
+	// [NOVO] Endpoint para atualizar apenas o status
+	@PUT("api/demandas/{id}/status")
+	suspend fun updateStatus(
+		@Path("id") id: Int,
+		@Body body: Map<String, String> // ex: {"status": "Em Rota"}
+	): Response<Void>
 }

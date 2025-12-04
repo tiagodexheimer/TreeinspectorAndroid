@@ -1,5 +1,6 @@
 package com.dexheimer.treeinspectorandroid.data.repository
 
+import android.util.Log
 import com.dexheimer.treeinspectorandroid.data.local.DemandaDao
 import com.dexheimer.treeinspectorandroid.data.remote.ApiService
 import com.dexheimer.treeinspectorandroid.data.remote.VistoriaRequest
@@ -19,8 +20,26 @@ class DemandaRepositoryImpl @Inject constructor(
 		dao.getDemandasDaRota(rotaId).map { it.toDomain() }
 	}
 
-	override suspend fun atualizarStatus(demandaId: Int, novoStatus: String) = withContext(Dispatchers.IO) {
-		dao.updateStatus(demandaId, novoStatus)
+	// [CORREÇÃO] Removido o '=' para evitar retorno implícito de Int (do Log)
+	override suspend fun atualizarStatus(demandaId: Int, novoStatus: String) {
+		withContext(Dispatchers.IO) {
+			// 1. Atualização Local
+			dao.updateStatus(demandaId, novoStatus)
+
+			// 2. Atualização Remota
+			try {
+				val body = mapOf("status" to novoStatus)
+				val response = api.updateStatus(demandaId, body)
+
+				if (response.isSuccessful) {
+					Log.d("DemandaRepo", "Status atualizado: $novoStatus")
+				} else {
+					Log.w("DemandaRepo", "Falha status remoto: ${response.code()}")
+				}
+			} catch (e: Exception) {
+				Log.e("DemandaRepo", "Sem conexão: ${e.message}")
+			}
+		}
 	}
 
 	override suspend fun enviarVistoria(demandaId: Int, respostas: Map<String, Any>): Result<Unit> = withContext(Dispatchers.IO) {
@@ -29,15 +48,12 @@ class DemandaRepositoryImpl @Inject constructor(
 			val response = api.salvarVistoria(request)
 
 			if (response.isSuccessful) {
-				// Se sucesso, atualiza localmente para 'concluido'
 				dao.updateStatus(demandaId, "concluido")
 				Result.success(Unit)
 			} else {
-				// Se erro 401, etc.
 				Result.failure(Exception("Falha no envio: ${response.code()}"))
 			}
 		} catch (e: Exception) {
-			// Se sem internet, apenas lança erro (quem chamar decide se salva offline)
 			Result.failure(e)
 		}
 	}

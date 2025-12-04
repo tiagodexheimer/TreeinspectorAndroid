@@ -28,7 +28,7 @@ object ImageWatermarkUtils {
 			// Configuração do Pincel
 			val paint = Paint().apply {
 				color = Color.WHITE
-				textSize = resultBitmap.height * 0.035f // 3.5% da altura
+				textSize = resultBitmap.height * 0.02f // 2% da altura
 				isAntiAlias = true
 				style = Paint.Style.FILL
 				setShadowLayer(10f, 4f, 4f, Color.BLACK) // Sombra forte para ler em qualquer fundo
