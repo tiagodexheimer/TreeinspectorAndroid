@@ -6,6 +6,10 @@ import com.dexheimer.treeinspectorandroid.presentation.vistoria.form.renderers.R
 import com.dexheimer.treeinspectorandroid.presentation.vistoria.form.renderers.SpinnerRenderer
 import com.dexheimer.treeinspectorandroid.presentation.vistoria.form.renderers.SwitchCheckboxRenderer
 import com.dexheimer.treeinspectorandroid.presentation.vistoria.form.renderers.TextFieldRenderer
+import com.dexheimer.treeinspectorandroid.presentation.vistoria.form.renderers.HeaderRenderer
+import com.dexheimer.treeinspectorandroid.presentation.vistoria.form.renderers.SeparatorRenderer
+import com.dexheimer.treeinspectorandroid.presentation.vistoria.form.renderers.CheckboxGroupRenderer
+import com.dexheimer.treeinspectorandroid.presentation.vistoria.form.renderers.DatePickerRenderer
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -39,4 +43,25 @@ object VistoriaFormModule {
 	@Provides
 	@IntoSet
 	fun provideMultiPhotoRenderer(): FormFieldRenderer = MultiPhotoRenderer()
+
+    @Provides
+    @IntoSet
+    fun provideHeaderRenderer(): FormFieldRenderer = HeaderRenderer()
+
+    @Provides
+    @IntoSet
+    fun provideSeparatorRenderer(): FormFieldRenderer = SeparatorRenderer()
+
+    @Provides
+    @IntoSet
+    fun provideCheckboxGroupRenderer(): FormFieldRenderer = CheckboxGroupRenderer()
+
+    @Provides
+    @IntoSet
+    fun provideDatePickerRenderer(): FormFieldRenderer = DatePickerRenderer()
+
+    @Provides
+    @IntoSet
+    fun provideTreeSpeciesRenderer(apiService: com.dexheimer.treeinspectorandroid.data.remote.ApiService): FormFieldRenderer = 
+        com.dexheimer.treeinspectorandroid.presentation.vistoria.form.renderers.TreeSpeciesRenderer(apiService)
 }

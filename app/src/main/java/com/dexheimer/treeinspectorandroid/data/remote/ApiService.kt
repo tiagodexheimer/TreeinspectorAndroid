@@ -66,6 +66,16 @@ data class DemandasResponse(
 	val limit: Int?
 )
 
+data class Species(
+    val id: Int,
+    @SerializedName("nome_comum") val nomeComum: String,
+    @SerializedName("nome_cientifico") val nomeCientifico: String
+)
+
+data class SpeciesResponse(
+    val results: List<Species>
+)
+
 // --- Interface da API ---
 
 interface ApiService {
@@ -105,4 +115,7 @@ interface ApiService {
 		@Path("id") id: Int,
 		@Body body: Map<String, String> // ex: {"status": "Em Rota"}
 	): Response<Void>
+
+    @GET("api/especies")
+    suspend fun getSpecies(@Query("q") query: String): Response<SpeciesResponse>
 }
