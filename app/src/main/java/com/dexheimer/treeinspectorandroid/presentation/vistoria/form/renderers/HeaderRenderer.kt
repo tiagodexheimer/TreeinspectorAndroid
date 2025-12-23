@@ -1,6 +1,7 @@
 package com.dexheimer.treeinspectorandroid.presentation.vistoria.form.renderers
 
 import android.content.Context
+import android.graphics.Color
 import android.graphics.Typeface
 import android.view.View
 import android.view.ViewGroup
@@ -17,6 +18,7 @@ class HeaderRenderer @Inject constructor() : FormFieldRenderer {
         return TextView(context).apply {
             text = field.label
             textSize = 18f
+            setTextColor(Color.BLACK)
             setTypeface(null, Typeface.BOLD)
             layoutParams = ViewGroup.MarginLayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,

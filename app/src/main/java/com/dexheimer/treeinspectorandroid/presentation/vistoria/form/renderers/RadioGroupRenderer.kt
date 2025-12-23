@@ -37,6 +37,7 @@ class RadioGroupRenderer @Inject constructor() : FormFieldRenderer {
 				text = option.label
 				tag = option.value
 				id = View.generateViewId()
+				setTextColor(Color.BLACK)
 			}
 			radioGroup.addView(radioButton)
 		}

@@ -9,6 +9,7 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import com.dexheimer.treeinspectorandroid.data.remote.FormField
 import com.dexheimer.treeinspectorandroid.presentation.vistoria.form.FormFieldRenderer
+import android.graphics.Color
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 import javax.inject.Inject
@@ -16,7 +17,7 @@ import javax.inject.Inject
 // Lida com campos 'text' e 'textarea'
 class TextFieldRenderer @Inject constructor() : FormFieldRenderer {
 
-	override val supportedTypes: List<String> = listOf("textarea", "text")
+	override val supportedTypes: List<String> = listOf("textarea", "text", "number")
 
 	override fun render(context: Context, field: FormField, container: ViewGroup): View {
 		val textInputLayout = TextInputLayout(context)
@@ -32,11 +33,15 @@ class TextFieldRenderer @Inject constructor() : FormFieldRenderer {
 			LinearLayout.LayoutParams.MATCH_PARENT,
 			LinearLayout.LayoutParams.WRAP_CONTENT
 		)
+		editText.setTextColor(Color.BLACK)
+		editText.setHintTextColor(Color.GRAY)
 
 		if (field.type == "textarea") {
 			editText.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
 			editText.minLines = field.rows ?: 3
 			editText.gravity = Gravity.TOP or Gravity.START
+		} else if (field.type == "number") {
+			editText.inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL or InputType.TYPE_NUMBER_FLAG_SIGNED
 		} else {
 			editText.inputType = InputType.TYPE_CLASS_TEXT
 		}

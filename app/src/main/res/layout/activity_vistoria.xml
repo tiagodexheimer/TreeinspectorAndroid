@@ -48,7 +48,8 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
-                    android:padding="16dp">
+                    android:padding="16dp"
+                    android:background="#4CAF50">
 
                     <TextView
                         android:id="@+id/txtTipoDemanda"
@@ -57,7 +58,7 @@
                         android:text="Poda de Árvore"
                         android:textSize="18sp"
                         android:textStyle="bold"
-                        android:textColor="@android:color/black" />
+                        android:textColor="@android:color/white" />
 
                     <TextView
                         android:id="@+id/txtEndereco"
@@ -65,7 +66,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="4dp"
                         android:text="Rua das Flores, 123 - Centro"
-                        android:textColor="#666666" />
+                        android:textColor="@android:color/white" />
 
                     <TextView
                         android:id="@+id/txtDescricao"
@@ -73,7 +74,8 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
                         android:text="Descrição do serviço a ser realizado..."
-                        android:textSize="14sp" />
+                        android:textSize="14sp"
+                        android:textColor="@android:color/white" />
                 </LinearLayout>
             </androidx.cardview.widget.CardView>
 

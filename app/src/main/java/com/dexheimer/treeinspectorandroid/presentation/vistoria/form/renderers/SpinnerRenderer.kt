@@ -43,7 +43,18 @@ class SpinnerRenderer @Inject constructor() : FormFieldRenderer {
 			valoresLista.add(option.value)
 		}
 
-		val adapter = ArrayAdapter(context, android.R.layout.simple_spinner_item, opcoesLista)
+		val adapter = object : ArrayAdapter<String>(context, android.R.layout.simple_spinner_item, opcoesLista) {
+			override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+				val v = super.getView(position, convertView, parent)
+				(v as? TextView)?.setTextColor(Color.BLACK)
+				return v
+			}
+			override fun getDropDownView(position: Int, convertView: View?, parent: ViewGroup): View {
+				val v = super.getDropDownView(position, convertView, parent)
+				(v as? TextView)?.setTextColor(Color.BLACK)
+				return v
+			}
+		}
 		adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
 		spinner.adapter = adapter
 		spinner.tag = valoresLista // Usamos a tag para guardar os valores reais

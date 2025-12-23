@@ -22,6 +22,7 @@ class SwitchCheckboxRenderer @Inject constructor() : FormFieldRenderer {
 			SwitchMaterial(context).apply {
 				text = field.label
 				textSize = 16f
+				setTextColor(Color.BLACK)
 			}
 		} else { // checkbox
 			CheckBox(context).apply {

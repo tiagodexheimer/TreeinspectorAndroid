@@ -2,22 +2,27 @@
 package com.dexheimer.treeinspectorandroid.presentation.vistoria.form.renderers
 
 import android.content.Context
+import android.graphics.Color
 import android.text.Editable
 import android.text.TextWatcher
+import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
 import android.widget.AutoCompleteTextView
 import android.widget.LinearLayout
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.findViewTreeLifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import com.dexheimer.treeinspectorandroid.data.remote.ApiService
 import com.dexheimer.treeinspectorandroid.data.remote.FormField
 import com.dexheimer.treeinspectorandroid.presentation.vistoria.form.FormFieldRenderer
 import com.google.android.material.textfield.TextInputLayout
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 class TreeSpeciesRenderer @Inject constructor(
@@ -50,10 +55,25 @@ class TreeSpeciesRenderer @Inject constructor(
         val padding = (context.resources.displayMetrics.density * 16).toInt()
         autoComplete.setPadding(padding, padding, padding, padding)
         autoComplete.minHeight = (context.resources.displayMetrics.density * 48).toInt()
+        autoComplete.setTextColor(Color.BLACK)
+        autoComplete.setHintTextColor(Color.GRAY)
         
-        // Initial empty adapter
-        var currentAdapter = ArrayAdapter<String>(context, android.R.layout.simple_dropdown_item_1line)
-        autoComplete.setAdapter(currentAdapter)
+        // Initial empty adapter using a custom class to bypass local filtering
+        class NoFilterAdapter(context: Context, resource: Int, objects: List<String>) : 
+            ArrayAdapter<String>(context, resource, objects) {
+            private val filter = object : android.widget.Filter() {
+                override fun performFiltering(constraint: CharSequence?): FilterResults {
+                    val results = FilterResults()
+                    results.values = objects
+                    results.count = objects.size
+                    return results
+                }
+                override fun publishResults(constraint: CharSequence?, results: FilterResults?) {
+                    notifyDataSetChanged()
+                }
+            }
+            override fun getFilter(): android.widget.Filter = filter
+        }
 
         var searchJob: Job? = null
 
@@ -64,31 +84,55 @@ class TreeSpeciesRenderer @Inject constructor(
                 searchJob?.cancel()
                 
                 val query = s?.toString() ?: ""
-                if (query.length < 2) return
+                if (query.trim().isEmpty()) {
+                    autoComplete.dismissDropDown()
+                    return
+                }
 
-                val lifecycleOwner = autoComplete.findViewTreeLifecycleOwner()
+                // More robust way to find LifecycleOwner
+                var currentContext = context
+                var lifecycleOwner: LifecycleOwner? = autoComplete.findViewTreeLifecycleOwner()
                 
-                lifecycleOwner?.lifecycleScope?.launch {
-                     searchJob = launch {
-                         delay(400) // Reduced debounce
-                         try {
-                             val response = apiService.getSpecies(query)
-                             if (response.isSuccessful) {
-                                  val speciesList = response.body()?.results ?: emptyList()
-                                  val names = speciesList.map { "${it.nomeComum} (${it.nomeCientifico})" }
-                                  
-                                  // Fix: Create fresh adapter to avoid Filter issues with Async results
-                                  val newAdapter = ArrayAdapter(context, android.R.layout.simple_dropdown_item_1line, names)
-                                  autoComplete.setAdapter(newAdapter)
-                                  
-                                  if (names.isNotEmpty() && autoComplete.hasFocus()) {
-                                      autoComplete.showDropDown()
-                                  }
-                             }
-                         } catch (e: Exception) {
-                             e.printStackTrace()
-                         }
-                     }
+                while (lifecycleOwner == null && currentContext is android.content.ContextWrapper) {
+                    if (currentContext is LifecycleOwner) {
+                        lifecycleOwner = currentContext
+                        break
+                    }
+                    currentContext = currentContext.baseContext
+                }
+                
+                if (lifecycleOwner == null) {
+                    Log.e("TreeSpeciesRenderer", "Could not find LifecycleOwner for species search")
+                    return
+                }
+                
+                searchJob = lifecycleOwner.lifecycleScope.launch {
+                    delay(300) 
+                    try {
+                        Log.d("TreeSpeciesRenderer", "Searching for: $query")
+                        val response = apiService.getSpecies(query)
+                        if (response.isSuccessful) {
+                            val speciesList = response.body()?.results ?: emptyList()
+                            val names = speciesList.map { "${it.nomeComum} (${it.nomeCientifico})" }
+                            Log.d("TreeSpeciesRenderer", "Found ${names.size} results")
+                            
+                            withContext(Dispatchers.Main) {
+                                val dropdownLayout = context.resources.getIdentifier("dropdown_item", "layout", context.packageName)
+                                val newAdapter = NoFilterAdapter(context, if (dropdownLayout != 0) dropdownLayout else android.R.layout.simple_dropdown_item_1line, names)
+                                autoComplete.setAdapter(newAdapter)
+                                
+                                if (names.isNotEmpty() && autoComplete.hasFocus()) {
+                                    autoComplete.showDropDown()
+                                } else {
+                                    autoComplete.dismissDropDown()
+                                }
+                            }
+                        } else {
+                            Log.e("TreeSpeciesRenderer", "API Error: ${response.code()} ${response.message()}")
+                        }
+                    } catch (e: Exception) {
+                        Log.e("TreeSpeciesRenderer", "Error fetching species", e)
+                    }
                 }
             }
 

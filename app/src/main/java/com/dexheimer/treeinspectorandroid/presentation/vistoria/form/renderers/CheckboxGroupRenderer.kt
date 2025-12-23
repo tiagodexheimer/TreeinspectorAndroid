@@ -6,6 +6,7 @@ import android.view.ViewGroup
 import android.widget.CheckBox
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.graphics.Color
 import com.dexheimer.treeinspectorandroid.data.remote.FormField
 import com.dexheimer.treeinspectorandroid.presentation.vistoria.form.FormFieldRenderer
 import javax.inject.Inject
@@ -27,6 +28,7 @@ class CheckboxGroupRenderer @Inject constructor() : FormFieldRenderer {
         val labelView = TextView(context).apply {
             text = field.label
             textSize = 16f
+            setTextColor(Color.BLACK)
             setPadding(0, 16, 0, 8)
         }
         rootLayout.addView(labelView)
@@ -36,6 +38,7 @@ class CheckboxGroupRenderer @Inject constructor() : FormFieldRenderer {
             val checkBox = CheckBox(context).apply {
                 text = option.label
                 tag = option.value // Armazena o valor no tag
+                setTextColor(Color.BLACK)
             }
             rootLayout.addView(checkBox)
         }

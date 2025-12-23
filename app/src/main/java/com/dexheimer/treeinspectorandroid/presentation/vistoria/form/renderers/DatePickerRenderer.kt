@@ -6,6 +6,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.graphics.Color
 import com.dexheimer.treeinspectorandroid.data.remote.FormField
 import com.dexheimer.treeinspectorandroid.presentation.vistoria.form.FormFieldRenderer
 import com.google.android.material.textfield.TextInputEditText
@@ -37,6 +38,7 @@ class DatePickerRenderer @Inject constructor() : FormFieldRenderer {
             isFocusable = false // Impede digitação manual
             isClickable = true
             inputType = android.text.InputType.TYPE_NULL // Impede teclado
+            setTextColor(Color.BLACK)
         }
 
         val calendar = Calendar.getInstance()
