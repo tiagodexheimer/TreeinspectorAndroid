@@ -20,7 +20,7 @@ class DatePickerRenderer @Inject constructor() : FormFieldRenderer {
 
     override val supportedTypes = listOf("date")
 
-    override fun render(context: Context, field: FormField, container: ViewGroup): View {
+    override fun render(context: Context, field: FormField, container: ViewGroup, initialValue: Any?): View {
         val textInputLayout = TextInputLayout(context).apply {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -46,6 +46,20 @@ class DatePickerRenderer @Inject constructor() : FormFieldRenderer {
             val myFormat = "yyyy-MM-dd" // Formato ISO para backend
             val sdf = SimpleDateFormat(myFormat, Locale.US)
             editText.setText(sdf.format(calendar.time))
+        }
+
+        // Set initial value if present
+        if (initialValue is String && initialValue.isNotEmpty()) {
+            editText.setText(initialValue)
+            try {
+                val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+                val date = sdf.parse(initialValue)
+                if (date != null) {
+                    calendar.time = date
+                }
+            } catch (e: Exception) {
+                // Ignore parse error
+            }
         }
 
         val dateSetListener = DatePickerDialog.OnDateSetListener { _, year, monthOfYear, dayOfMonth ->

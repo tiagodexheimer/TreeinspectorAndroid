@@ -14,7 +14,7 @@ class HeaderRenderer @Inject constructor() : FormFieldRenderer {
 
     override val supportedTypes = listOf("header")
 
-    override fun render(context: Context, field: FormField, container: ViewGroup): View {
+    override fun render(context: Context, field: FormField, container: ViewGroup, initialValue: Any?): View {
         return TextView(context).apply {
             text = field.label
             textSize = 18f

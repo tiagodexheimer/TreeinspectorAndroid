@@ -15,7 +15,7 @@ class CheckboxGroupRenderer @Inject constructor() : FormFieldRenderer {
 
     override val supportedTypes = listOf("checkbox_group")
 
-    override fun render(context: Context, field: FormField, container: ViewGroup): View {
+    override fun render(context: Context, field: FormField, container: ViewGroup, initialValue: Any?): View {
         val rootLayout = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(
@@ -33,12 +33,15 @@ class CheckboxGroupRenderer @Inject constructor() : FormFieldRenderer {
         }
         rootLayout.addView(labelView)
 
+        val selectedValues = (initialValue as? String)?.split(",") ?: emptyList()
+
         // Opções
         field.options?.forEach { option ->
             val checkBox = CheckBox(context).apply {
                 text = option.label
                 tag = option.value // Armazena o valor no tag
                 setTextColor(Color.BLACK)
+                isChecked = selectedValues.contains(option.value)
             }
             rootLayout.addView(checkBox)
         }

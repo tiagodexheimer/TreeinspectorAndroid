@@ -78,6 +78,7 @@ class VistoriaActivity : AppCompatActivity() {
 	private val formViews = mutableMapOf<String, View>()
 	private var fieldDefinitions = emptyList<FormField>()
 	private val fotosEstaticasFilePaths = mutableListOf<String>()
+	private var lastDraft: Map<String, Any>? = null
 
 	private var isSaving = false
 
@@ -162,6 +163,7 @@ class VistoriaActivity : AppCompatActivity() {
 
 		if (demandaAtual != null) {
 			preencherCabecalho()
+			viewModel.carregarRascunho(demandaAtual!!.id)
 			demandaAtual?.tipoDemanda?.let { viewModel.buscarFormulario(it) }
 		} else if (extraId != -1) {
 			Toast.makeText(this, "Erro: Dados da demanda não encontrados.", Toast.LENGTH_LONG).show()
@@ -185,6 +187,11 @@ class VistoriaActivity : AppCompatActivity() {
 		}
 
 		observarViewModel()
+	}
+
+	override fun onPause() {
+		super.onPause()
+		salvarRascunhoLocal()
 	}
 
 	override fun onSaveInstanceState(outState: Bundle) {
@@ -235,9 +242,25 @@ class VistoriaActivity : AppCompatActivity() {
 						showLoading(state.isLoading)
 					}
 
-					if (state.formFields.isNotEmpty() && fieldDefinitions != state.formFields) {
+					// Verify if form needs rendering (fields loaded OR draft loaded/changed)
+					if (state.formFields.isNotEmpty() && (fieldDefinitions != state.formFields || lastDraft != state.draft)) {
 						fieldDefinitions = state.formFields
-						renderDynamicForm(state.formFields)
+						lastDraft = state.draft
+						
+						// Create a combined draft map (ViewModel draft + invalid/local changes if needed)
+						// For now, just use ViewModel draft
+						renderDynamicForm(state.formFields, state.draft)
+
+						// Restore static photos if present in draft and list is empty (first load)
+						if (fotosEstaticasFilePaths.isEmpty() && state.draft != null) {
+							val savedPhotos = state.draft["fotos_evidencia"] as? List<String>
+							if (!savedPhotos.isNullOrEmpty()) {
+								fotosEstaticasFilePaths.addAll(savedPhotos)
+								containerFotosEstaticas.removeAllViews()
+								txtSemFotos.visibility = View.GONE
+								fotosEstaticasFilePaths.forEach { adicionarFotoViewEstatica(it) }
+							}
+						}
 					}
 
 					val temFormulario = state.formFields.isNotEmpty() || fotosEstaticasFilePaths.isNotEmpty()
@@ -249,16 +272,21 @@ class VistoriaActivity : AppCompatActivity() {
 		}
 	}
 
-	private fun renderDynamicForm(campos: List<FormField>) {
+	private fun renderDynamicForm(campos: List<FormField>, draft: Map<String, Any>? = null) {
 		dynamicFormContainer.removeAllViews()
 		formViews.clear()
 
 		for (campo in campos) {
-			val renderer = rendererFactory.getRenderer(campo.type)
-			if (renderer != null) {
-				val view = renderer.render(this, campo, dynamicFormContainer)
-				formViews[campo.name] = view
-				view.tag = campo.name
+			try {
+				val renderer = rendererFactory.getRenderer(campo.type)
+				if (renderer != null) {
+					val initialValue = draft?.get(campo.name)
+					val view = renderer.render(this, campo, dynamicFormContainer, initialValue)
+					formViews[campo.name] = view
+					view.tag = campo.name
+				}
+			} catch (e: Exception) {
+				Log.e("VistoriaActivity", "Erro ao renderizar campo ${campo.name}: ${e.message}", e)
 			}
 		}
 	}
@@ -312,26 +340,36 @@ class VistoriaActivity : AppCompatActivity() {
 	private fun processarFotoComDadosCompletos(path: String, location: Location?) {
 		showLoading(true)
 		lifecycleScope.launch(Dispatchers.IO) {
-			val dateStr = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault()).format(Date())
-			val gpsStr = if (location != null) {
-				"Lat: ${String.format("%.5f", location.latitude)} | Lon: ${String.format("%.5f", location.longitude)}"
-			} else {
-				"GPS: Indisponível"
-			}
+			try {
+				val dateStr = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault()).format(Date())
+				val gpsStr = if (location != null) {
+					"Lat: ${String.format("%.5f", location.latitude)} | Lon: ${String.format("%.5f", location.longitude)}"
+				} else {
+					"GPS: Indisponível"
+				}
 
-			var addressStr = ""
-			if (location != null) {
-				val end = getAddressString(location)
-				if (end != null) addressStr = "\n$end"
-			}
+				var addressStr = ""
+				if (location != null) {
+					val end = getAddressString(location)
+					if (end != null) addressStr = "\n$end"
+				}
 
-			val textoFinal = "$dateStr\n$gpsStr$addressStr"
-			val sucesso = ImageWatermarkUtils.waterMarkImage(path, textoFinal)
+				val textoFinal = "$dateStr\n$gpsStr$addressStr"
+				val sucesso = ImageWatermarkUtils.waterMarkImage(path, textoFinal)
 
-			withContext(Dispatchers.Main) {
-				showLoading(false)
-				if (!sucesso) Log.w("VistoriaActivity", "Falha ao gravar marca d'água")
-				adicionarFotoNaTela(currentPhotoField!!, path)
+				withContext(Dispatchers.Main) {
+					if (!sucesso) Log.w("VistoriaActivity", "Falha ao gravar marca d'água")
+					adicionarFotoNaTela(currentPhotoField ?: "", path)
+				}
+			} catch (e: Exception) {
+				Log.e("VistoriaActivity", "Erro ao processar foto: ${e.message}", e)
+				withContext(Dispatchers.Main) {
+					Toast.makeText(this@VistoriaActivity, "Erro ao processar foto.", Toast.LENGTH_SHORT).show()
+				}
+			} finally {
+				withContext(Dispatchers.Main) {
+					showLoading(false)
+				}
 			}
 		}
 	}
@@ -368,6 +406,8 @@ class VistoriaActivity : AppCompatActivity() {
 	}
 
 	private fun adicionarFotoNaTela(fieldName: String, path: String) {
+		if (fieldName.isEmpty()) return
+
 		if (fieldName == "FIELD_FIXED_PHOTOS") {
 			fotosEstaticasFilePaths.add(path)
 			txtSemFotos.visibility = View.GONE
@@ -502,11 +542,20 @@ class VistoriaActivity : AppCompatActivity() {
 
 	private fun finalizarComSucesso(msg: String, novoStatus: String) {
 		Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+		demandaAtual?.id?.let { viewModel.limparRascunho(it) } // Limpa rascunho
 		val resultIntent = Intent().apply {
 			putExtra("NOVO_STATUS", novoStatus)
 			putExtra("DEMANDA_ID", demandaAtual?.id)
 		}
 		setResult(Activity.RESULT_OK, resultIntent)
 		finish()
+	}
+
+	private fun salvarRascunhoLocal() {
+		if (demandaAtual == null || isSaving) return
+		val respostas = coletarRespostas()
+		if (respostas.isNotEmpty()) {
+			viewModel.salvarRascunho(demandaAtual!!.id, respostas)
+		}
 	}
 }

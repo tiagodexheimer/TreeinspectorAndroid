@@ -17,7 +17,7 @@ interface FormFieldRenderer {
 	 * Renderiza o campo e o anexa ao container.
 	 * @return A View principal do campo renderizado para ser rastreada.
 	 */
-	fun render(context: Context, field: FormField, container: ViewGroup): View
+	fun render(context: Context, field: FormField, container: ViewGroup, initialValue: Any? = null): View
 
 	/**
 	 * Coleta a resposta do usuário a partir da View do campo.

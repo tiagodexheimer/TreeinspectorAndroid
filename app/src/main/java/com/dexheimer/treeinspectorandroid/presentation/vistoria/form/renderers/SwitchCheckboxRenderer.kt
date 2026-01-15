@@ -17,7 +17,7 @@ class SwitchCheckboxRenderer @Inject constructor() : FormFieldRenderer {
 
 	override val supportedTypes: List<String> = listOf("switch", "checkbox")
 
-	override fun render(context: Context, field: FormField, container: ViewGroup): View {
+	override fun render(context: Context, field: FormField, container: ViewGroup, initialValue: Any?): View {
 		val view = if (field.type == "switch") {
 			SwitchMaterial(context).apply {
 				text = field.label
@@ -37,9 +37,13 @@ class SwitchCheckboxRenderer @Inject constructor() : FormFieldRenderer {
 			LinearLayout.LayoutParams.WRAP_CONTENT
 		)
 
-		if (field.defaultValue.toString().equals("true", ignoreCase = true)) {
-			(view as CompoundButton).isChecked = true
+		val isCheckedInitial = if (initialValue != null) {
+			initialValue.toString().toBoolean()
+		} else {
+			field.defaultValue.toString().equals("true", ignoreCase = true)
 		}
+
+		(view as CompoundButton).isChecked = isCheckedInitial
 
 		container.addView(view)
 		addSpacer(context, container)

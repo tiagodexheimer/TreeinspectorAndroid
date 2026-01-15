@@ -6,11 +6,13 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import com.dexheimer.treeinspectorandroid.core.util.GeomTypeConverter
+import com.dexheimer.treeinspectorandroid.data.local.VistoriaDraft
+import com.dexheimer.treeinspectorandroid.data.local.VistoriaDraftDao
 
 // Certifique-se que 'FormularioCache::class' está na lista de entities
 @Database(
-	entities = [RotaEntity::class, DemandaEntity::class, FormularioCache::class, VistoriaPendente::class],
-	version = 4, // Se der erro de migração, aumente para 5
+	entities = [RotaEntity::class, DemandaEntity::class, FormularioCache::class, VistoriaPendente::class, VistoriaDraft::class],
+	version = 5, // Se der erro de migração, aumente para 5
 	exportSchema = false
 )
 @TypeConverters(GeomTypeConverter::class)
@@ -20,6 +22,7 @@ abstract class AppDatabase : RoomDatabase() {
 	abstract fun demandaDao(): DemandaDao
 	abstract fun formularioDao(): FormularioDao
 	abstract fun vistoriaDao(): VistoriaDao
+	abstract fun vistoriaDraftDao(): VistoriaDraftDao
 
 	companion object {
 		@Volatile

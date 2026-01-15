@@ -19,7 +19,7 @@ class TextFieldRenderer @Inject constructor() : FormFieldRenderer {
 
 	override val supportedTypes: List<String> = listOf("textarea", "text", "number")
 
-	override fun render(context: Context, field: FormField, container: ViewGroup): View {
+	override fun render(context: Context, field: FormField, container: ViewGroup, initialValue: Any?): View {
 		val textInputLayout = TextInputLayout(context)
 		textInputLayout.layoutParams = LinearLayout.LayoutParams(
 			LinearLayout.LayoutParams.MATCH_PARENT,
@@ -44,6 +44,10 @@ class TextFieldRenderer @Inject constructor() : FormFieldRenderer {
 			editText.inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL or InputType.TYPE_NUMBER_FLAG_SIGNED
 		} else {
 			editText.inputType = InputType.TYPE_CLASS_TEXT
+		}
+
+		if (initialValue is String && initialValue.isNotEmpty()) {
+			editText.setText(initialValue)
 		}
 
 		textInputLayout.addView(editText)

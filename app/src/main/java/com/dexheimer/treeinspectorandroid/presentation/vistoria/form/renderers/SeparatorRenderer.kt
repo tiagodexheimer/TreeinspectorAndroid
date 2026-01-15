@@ -13,7 +13,7 @@ class SeparatorRenderer @Inject constructor() : FormFieldRenderer {
 
     override val supportedTypes = listOf("separator")
 
-    override fun render(context: Context, field: FormField, container: ViewGroup): View {
+    override fun render(context: Context, field: FormField, container: ViewGroup, initialValue: Any?): View {
         val separator = View(context).apply {
             setBackgroundColor(Color.parseColor("#DDDDDD")) // Cor levemente mais visível
             layoutParams = LinearLayout.LayoutParams(

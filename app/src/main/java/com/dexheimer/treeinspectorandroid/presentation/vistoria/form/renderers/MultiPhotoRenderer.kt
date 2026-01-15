@@ -16,6 +16,10 @@ import androidx.core.view.setMargins
 import com.dexheimer.treeinspectorandroid.data.remote.FormField
 import com.dexheimer.treeinspectorandroid.presentation.vistoria.VistoriaActivity
 import com.dexheimer.treeinspectorandroid.presentation.vistoria.form.FormFieldRenderer
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 class MultiPhotoRenderer : FormFieldRenderer {
@@ -23,7 +27,7 @@ class MultiPhotoRenderer : FormFieldRenderer {
 	// Tipos suportados no JSON
 	override val supportedTypes: List<String> = listOf("photo", "photos", "image", "gallery")
 
-	override fun render(context: Context, field: FormField, container: ViewGroup): View {
+	override fun render(context: Context, field: FormField, container: ViewGroup, initialValue: Any?): View {
 		// Container Principal do Campo
 		val masterLayout = LinearLayout(context).apply {
 			orientation = LinearLayout.VERTICAL
@@ -108,6 +112,13 @@ class MultiPhotoRenderer : FormFieldRenderer {
 		}
 		masterLayout.addView(hiddenPathsView)
 
+		// Restaurar fotos iniciais
+		if (initialValue is List<*>) {
+			initialValue.filterIsInstance<String>().forEach { path ->
+				addPhotoToView(masterLayout, path)
+			}
+		}
+
 		container.addView(masterLayout)
 		return masterLayout
 	}
@@ -125,36 +136,52 @@ class MultiPhotoRenderer : FormFieldRenderer {
 	}
 
 	companion object {
-		// Atualiza a UI adicionando a miniatura
 		fun addPhotoToView(viewContainer: View, photoPath: String) {
 			val context = viewContainer.context
 
 			// 1. Atualiza dados ocultos
-			val hiddenView = viewContainer.findViewWithTag<TextView>("paths_list")
+			val hiddenView = viewContainer.findViewWithTag<TextView>("paths_list") ?: return
 			val currentPaths = hiddenView.text.toString()
 			val newPaths = if (currentPaths.isEmpty()) photoPath else "$currentPaths|$photoPath"
 			hiddenView.text = newPaths
 
 			// 2. Adiciona miniatura visual
-			val photosContainer = viewContainer.findViewWithTag<LinearLayout>("photos_container")
+			val photosContainer = viewContainer.findViewWithTag<LinearLayout>("photos_container") ?: return
 
 			val imageView = ImageView(context).apply {
-				layoutParams = LinearLayout.LayoutParams(250, 250).apply { // Tamanho quadrado
+				layoutParams = LinearLayout.LayoutParams(250, 250).apply {
 					setMargins(0, 0, 16, 0)
 				}
 				scaleType = ImageView.ScaleType.CENTER_CROP
 				background = context.getDrawable(android.R.drawable.screen_background_light_transparent)
-
-				// Carrega a imagem (em produção, use Glide/Coil para performance)
-				try {
-					setImageBitmap(BitmapFactory.decodeFile(photoPath))
-				} catch (e: Exception) {
-					// Fallback se falhar
-					setBackgroundColor(Color.LTGRAY)
-				}
 			}
-
 			photosContainer.addView(imageView)
+
+			// 3. Load Bitmap asynchronously to avoid ANR
+			if (context is androidx.lifecycle.LifecycleOwner) {
+				context.lifecycleScope.launch(Dispatchers.IO) {
+					try {
+						// Decode with sample size to reduce memory usage
+						val options = BitmapFactory.Options().apply { inSampleSize = 4 }
+						val bitmap = BitmapFactory.decodeFile(photoPath, options)
+						withContext(Dispatchers.Main) {
+							imageView.setImageBitmap(bitmap)
+						}
+					} catch (e: Exception) {
+						withContext(Dispatchers.Main) {
+							imageView.setBackgroundColor(Color.LTGRAY)
+						}
+					}
+				}
+			} else {
+				// Fallback if not LifecycleOwner (should not happen in Activity)
+				// Just load safely-ish
+				try {
+					val options = BitmapFactory.Options().apply { inSampleSize = 8 }
+					val bitmap = BitmapFactory.decodeFile(photoPath, options)
+					imageView.setImageBitmap(bitmap)
+				} catch (e: Exception) { }
+			}
 		}
 	}
 }

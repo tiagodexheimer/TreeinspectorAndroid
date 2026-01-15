@@ -7,6 +7,7 @@ import com.dexheimer.treeinspectorandroid.data.local.DemandaDao
 import com.dexheimer.treeinspectorandroid.data.local.FormularioDao
 import com.dexheimer.treeinspectorandroid.data.local.RotaDao
 import com.dexheimer.treeinspectorandroid.data.local.VistoriaDao
+import com.dexheimer.treeinspectorandroid.data.local.VistoriaDraftDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -41,4 +42,7 @@ object DatabaseModule {
 
 	@Provides
 	fun provideFormularioDao(db: AppDatabase): FormularioDao = db.formularioDao()
+
+	@Provides
+	fun provideVistoriaDraftDao(db: AppDatabase): VistoriaDraftDao = db.vistoriaDraftDao()
 }

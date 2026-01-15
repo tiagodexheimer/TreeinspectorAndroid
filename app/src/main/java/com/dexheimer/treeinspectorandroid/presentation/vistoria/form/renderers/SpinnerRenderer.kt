@@ -18,7 +18,7 @@ class SpinnerRenderer @Inject constructor() : FormFieldRenderer {
 
 	override val supportedTypes: List<String> = listOf("select")
 
-	override fun render(context: Context, field: FormField, container: ViewGroup): View {
+	override fun render(context: Context, field: FormField, container: ViewGroup, initialValue: Any?): View {
 		val labelView = TextView(context).apply {
 			text = field.label
 			textSize = 16f
@@ -58,6 +58,15 @@ class SpinnerRenderer @Inject constructor() : FormFieldRenderer {
 		adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
 		spinner.adapter = adapter
 		spinner.tag = valoresLista // Usamos a tag para guardar os valores reais
+
+		// Select initial value
+		val initialString = initialValue as? String
+		if (!initialString.isNullOrEmpty()) {
+			val index = valoresLista.indexOf(initialString)
+			if (index != -1) {
+				spinner.setSelection(index)
+			}
+		}
 
 		container.addView(spinner)
 		addSpacer(context, container)

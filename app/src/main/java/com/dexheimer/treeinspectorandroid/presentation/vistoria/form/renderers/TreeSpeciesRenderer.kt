@@ -31,7 +31,7 @@ class TreeSpeciesRenderer @Inject constructor(
 
     override val supportedTypes: List<String> = listOf("tree_species")
 
-    override fun render(context: Context, field: FormField, container: ViewGroup): View {
+    override fun render(context: Context, field: FormField, container: ViewGroup, initialValue: Any?): View {
         val textInputLayout = TextInputLayout(context)
         textInputLayout.layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -57,6 +57,10 @@ class TreeSpeciesRenderer @Inject constructor(
         autoComplete.minHeight = (context.resources.displayMetrics.density * 48).toInt()
         autoComplete.setTextColor(Color.BLACK)
         autoComplete.setHintTextColor(Color.GRAY)
+
+        if (initialValue is String && initialValue.isNotEmpty()) {
+            autoComplete.setText(initialValue)
+        }
         
         // Initial empty adapter using a custom class to bypass local filtering
         class NoFilterAdapter(context: Context, resource: Int, objects: List<String>) : 

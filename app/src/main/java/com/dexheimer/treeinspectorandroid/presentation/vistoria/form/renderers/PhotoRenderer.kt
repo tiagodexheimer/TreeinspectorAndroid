@@ -12,13 +12,17 @@ import android.widget.TextView
 import com.dexheimer.treeinspectorandroid.presentation.vistoria.VistoriaActivity
 import com.dexheimer.treeinspectorandroid.presentation.vistoria.form.FormFieldRenderer
 import com.dexheimer.treeinspectorandroid.data.remote.FormField
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 class PhotoRenderer : FormFieldRenderer {
 
 	override val supportedTypes: List<String> = listOf("photo", "image")
 
-	override fun render(context: Context, field: FormField, container: ViewGroup): View {
+	override fun render(context: Context, field: FormField, container: ViewGroup, initialValue: Any?): View {
 		val layout = LinearLayout(context).apply {
 			orientation = LinearLayout.VERTICAL
 			layoutParams = LinearLayout.LayoutParams(
@@ -61,6 +65,25 @@ class PhotoRenderer : FormFieldRenderer {
 		val pathView = TextView(context).apply {
 			visibility = View.GONE
 			tag = "path_value" // Tag para coleta de resposta
+		}
+
+		// Restore state
+		if (initialValue is String && initialValue.isNotEmpty()) {
+			pathView.text = initialValue
+			imageView.visibility = View.VISIBLE
+			button.text = "Alterar Foto"
+
+			if (context is androidx.lifecycle.LifecycleOwner) {
+				context.lifecycleScope.launch(Dispatchers.IO) {
+					try {
+						val options = BitmapFactory.Options().apply { inSampleSize = 4 }
+						val bitmap = BitmapFactory.decodeFile(initialValue, options)
+						withContext(Dispatchers.Main) {
+							imageView.setImageBitmap(bitmap)
+						}
+					} catch (e: Exception) { }
+				}
+			}
 		}
 
 		layout.addView(label)

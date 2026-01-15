@@ -18,7 +18,7 @@ class RadioGroupRenderer @Inject constructor() : FormFieldRenderer {
 
 	override val supportedTypes: List<String> = listOf("radio")
 
-	override fun render(context: Context, field: FormField, container: ViewGroup): View {
+	override fun render(context: Context, field: FormField, container: ViewGroup, initialValue: Any?): View {
 		val labelView = TextView(context).apply {
 			text = field.label
 			textSize = 16f
@@ -32,12 +32,15 @@ class RadioGroupRenderer @Inject constructor() : FormFieldRenderer {
 			orientation = RadioGroup.VERTICAL
 		}
 
+		val selectedValue = initialValue as? String
+
 		field.options?.forEach { option ->
 			val radioButton = RadioButton(context).apply {
 				text = option.label
 				tag = option.value
 				id = View.generateViewId()
 				setTextColor(Color.BLACK)
+				isChecked = option.value == selectedValue
 			}
 			radioGroup.addView(radioButton)
 		}
