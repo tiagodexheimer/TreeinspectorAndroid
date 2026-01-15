@@ -8,7 +8,9 @@ import com.dexheimer.treeinspectorandroid.data.remote.FormField
 import com.dexheimer.treeinspectorandroid.domain.model.Demanda
 import com.dexheimer.treeinspectorandroid.domain.usecase.SalvarVistoriaUseCase
 import com.dexheimer.treeinspectorandroid.data.local.VistoriaDraftDao
+import android.util.Log
 import com.dexheimer.treeinspectorandroid.data.local.VistoriaDraft
+import com.dexheimer.treeinspectorandroid.data.local.VistoriaDao
 import com.dexheimer.treeinspectorandroid.domain.usecase.SaveResult
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
@@ -33,7 +35,8 @@ class VistoriaViewModel @Inject constructor(
 	private val formularioDao: FormularioDao,
 	private val apiService: ApiService,
 	private val salvarVistoriaUseCase: SalvarVistoriaUseCase,
-	private val vistoriaDraftDao: VistoriaDraftDao
+	private val vistoriaDraftDao: VistoriaDraftDao,
+	private val vistoriaDao: VistoriaDao
 ) : ViewModel() {
 
 	private val _uiState = MutableStateFlow(VistoriaUiState())
@@ -107,21 +110,35 @@ class VistoriaViewModel @Inject constructor(
 
 	fun carregarRascunho(demandaId: Int) {
 		viewModelScope.launch {
+			// 1. Tenta carregar Draft (Prioridade: Trabalho em andamento)
 			val draft = vistoriaDraftDao.getDraft(demandaId)
 			if (draft != null) {
 				try {
 					val type = object : TypeToken<Map<String, Any>>() {}.type
 					val respostas: Map<String, Any> = Gson().fromJson(draft.respostasJson, type)
-					
-					// Also restore static photos if needed, usually they are part of "respostas" if mapped correctly, 
-					// but our activity handles them separately in 'fotosEstaticasFilePaths'.
-					// For simplicity, we can assume they are in the map or handle them specifically if needed.
-					// Based on VistoriaActivity.coletarRespostas, "fotos_evidencia" is put into the map.
-					
 					_uiState.value = _uiState.value.copy(draft = respostas)
+					Log.d("VistoriaViewModel", "Draft loaded for demanda $demandaId: $respostas")
+					return@launch
 				} catch (e: Exception) {
-					// Corrupt draft
+					Log.e("VistoriaViewModel", "Error parsing draft", e)
 				}
+			} else {
+				Log.d("VistoriaViewModel", "No draft found for demanda $demandaId")
+			}
+
+			// 2. Se não tem draft, tenta carregar Vistoria já realizada (Edição/Visualização)
+			val vistoriaExistente = vistoriaDao.getVistoriaPorDemanda(demandaId)
+			if (vistoriaExistente != null) {
+				try {
+					val type = object : TypeToken<Map<String, Any>>() {}.type
+					val respostas: Map<String, Any> = Gson().fromJson(vistoriaExistente.jsonRespostas, type)
+					_uiState.value = _uiState.value.copy(draft = respostas)
+					Log.d("VistoriaViewModel", "Existing vistoria loaded for demanda $demandaId: $respostas")
+				} catch (e: Exception) {
+					Log.e("VistoriaViewModel", "Error parsing existing vistoria", e)
+				}
+			} else {
+				Log.d("VistoriaViewModel", "No existing vistoria found for demanda $demandaId")
 			}
 		}
 	}
@@ -130,19 +147,10 @@ class VistoriaViewModel @Inject constructor(
 		viewModelScope.launch(Dispatchers.IO) {
 			try {
 				val jsonRespostas = Gson().toJson(respostas)
-				// We don't have separate 'fotosEstaticasJson' usage in the map, so we can store empty or duplicate.
-				// Actually VistoriaDraft has 'fotosEstaticasJson'. 
-				// Let's modify the signature or just infer it.
-				// User plan: "salvarRascunho(demandaId: Int, respostas: Map<String, Any>, fotos: List<String>)"
-				// But simpler is to pull fotos from answers if possible.
-				
-				// Let's implement exactly as planned if possible or adapt.
-				// Activity puts "fotos_evidencia" in the map.
-				
 				val draft = VistoriaDraft(
 					demandaId = demandaId,
 					respostasJson = jsonRespostas,
-					fotosEstaticasJson = "", // Not strictly used separate from map in this impl
+					fotosEstaticasJson = "",
 					lastUpdated = System.currentTimeMillis()
 				)
 				vistoriaDraftDao.insertOrUpdate(draft)

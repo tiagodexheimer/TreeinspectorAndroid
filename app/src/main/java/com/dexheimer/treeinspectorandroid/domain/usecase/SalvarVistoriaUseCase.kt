@@ -26,17 +26,28 @@ class SalvarVistoriaUseCase @Inject constructor(
 			val demandaId = demanda.id
 			val gson = Gson()
 
-			// 1. Converte o mapa (com caminhos locais) para JSON
 			val jsonRespostas = gson.toJson(respostas)
 
-			// 2. Cria a entidade de persistência
-			val vistoriaPendente = VistoriaPendente(
-				demandaId = demandaId,
-				jsonRespostas = jsonRespostas
-			)
+			// 2. Verifica se j exists para atualizao
+			val vistoriaExistente = vistoriaDao.getVistoriaPorDemanda(demandaId)
 
-			// 3. Salva no banco local e marca demanda como "Aguardando Sincronização"
-			vistoriaDao.adicionarFila(vistoriaPendente)
+			if (vistoriaExistente != null) {
+				// ATUALIZA (Mesmo se j estava sincronizada, ao editar ela volta a ser no-sincronizada para reenviar)
+				vistoriaDao.atualizarVistoria(
+					demandaId = demandaId,
+					json = jsonRespostas,
+					sincronizado = false,
+					data = System.currentTimeMillis()
+				)
+			} else {
+				// INSERE NOVA
+				val vistoriaPendente = VistoriaPendente(
+					demandaId = demandaId,
+					jsonRespostas = jsonRespostas
+				)
+				vistoriaDao.adicionarFila(vistoriaPendente)
+			}
+			
 			demandaDao.updateStatus(demandaId, "Concluída")
 
 			// 4. Agenda o Worker para rodar assim que tiver internet

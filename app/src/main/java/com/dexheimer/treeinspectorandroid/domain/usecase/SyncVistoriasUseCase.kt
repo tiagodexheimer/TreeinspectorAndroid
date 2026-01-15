@@ -57,7 +57,9 @@ class SyncVistoriasUseCase @Inject constructor(
 				val response = apiService.salvarVistoria(request)
 
 				if (response.isSuccessful) {
-					vistoriaDao.removerDaFila(vistoria)
+					// EM VEZ DE REMOVER, MARCA COMO SINCRONIZADA
+					vistoriaDao.marcarComoSincronizada(vistoria.id)
+					
 					demandaDao.updateStatus(vistoria.demandaId, "concluido")
 					Log.i("Sync", "Sucesso: Demanda ${vistoria.demandaId} sincronizada.")
 

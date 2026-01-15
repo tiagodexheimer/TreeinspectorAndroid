@@ -9,5 +9,6 @@ data class VistoriaPendente(
 	val id: Int = 0,
 	val demandaId: Int,
 	val jsonRespostas: String, // O JSON com as respostas preenchidas
-	val dataCriacao: Long = System.currentTimeMillis()
+	val dataCriacao: Long = System.currentTimeMillis(),
+	val sincronizado: Boolean = false
 )

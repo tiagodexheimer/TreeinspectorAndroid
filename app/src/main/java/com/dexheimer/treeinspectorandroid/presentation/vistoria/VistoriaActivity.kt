@@ -251,13 +251,14 @@ class VistoriaActivity : AppCompatActivity() {
 						// For now, just use ViewModel draft
 						renderDynamicForm(state.formFields, state.draft)
 
-						// Restore static photos if present in draft and list is empty (first load)
-						if (fotosEstaticasFilePaths.isEmpty() && state.draft != null) {
+						// Restore static photos if present in draft
+						if (state.draft != null) {
 							val savedPhotos = state.draft["fotos_evidencia"] as? List<String>
-							if (!savedPhotos.isNullOrEmpty()) {
+							if (savedPhotos != null) {
+								fotosEstaticasFilePaths.clear()
 								fotosEstaticasFilePaths.addAll(savedPhotos)
 								containerFotosEstaticas.removeAllViews()
-								txtSemFotos.visibility = View.GONE
+								txtSemFotos.visibility = if (fotosEstaticasFilePaths.isEmpty()) View.VISIBLE else View.GONE
 								fotosEstaticasFilePaths.forEach { adicionarFotoViewEstatica(it) }
 							}
 						}

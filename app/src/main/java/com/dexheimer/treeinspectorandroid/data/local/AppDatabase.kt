@@ -12,7 +12,7 @@ import com.dexheimer.treeinspectorandroid.data.local.VistoriaDraftDao
 // Certifique-se que 'FormularioCache::class' está na lista de entities
 @Database(
 	entities = [RotaEntity::class, DemandaEntity::class, FormularioCache::class, VistoriaPendente::class, VistoriaDraft::class],
-	version = 5, // Se der erro de migração, aumente para 5
+	version = 6, // Se der erro de migração, aumente para 5
 	exportSchema = false
 )
 @TypeConverters(GeomTypeConverter::class)
