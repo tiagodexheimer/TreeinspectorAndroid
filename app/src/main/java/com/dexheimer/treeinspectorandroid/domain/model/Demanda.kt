@@ -1,6 +1,7 @@
 package com.dexheimer.treeinspectorandroid.domain.model
 
 import com.dexheimer.treeinspectorandroid.core.util.Geom // Certifique-se de que o Geom foi movido para core/util
+import com.dexheimer.treeinspectorandroid.domain.model.Anexo
 import java.io.Serializable
 
 data class Demanda(
@@ -26,6 +27,8 @@ data class Demanda(
 	val tipoDemanda: String?,
 	val descricao: String?,
 	val geom: Geom?, // Objeto de Geometria
+	val anexos: List<Anexo>?, // Lista de Anexos
+
 
 	// Campos de controle local (App)
 	val statusVistoria: String = "pendente",
