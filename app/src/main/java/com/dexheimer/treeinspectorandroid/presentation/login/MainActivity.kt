@@ -5,12 +5,14 @@ import android.os.Bundle
 import android.view.View
 import android.widget.Button
 import android.widget.ProgressBar
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import com.dexheimer.treeinspectorandroid.BuildConfig
 import com.dexheimer.treeinspectorandroid.R
 import com.dexheimer.treeinspectorandroid.core.util.SessionManager
 import com.dexheimer.treeinspectorandroid.presentation.rotas.RoutesActivity
@@ -18,94 +20,92 @@ import com.google.android.material.textfield.TextInputEditText
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 
-
 @AndroidEntryPoint
 class MainActivity : AppCompatActivity() {
 
-	private val viewModel: LoginViewModel by viewModels()
-	private lateinit var sessionManager: SessionManager
+    private val viewModel: LoginViewModel by viewModels()
+    private lateinit var sessionManager: SessionManager
 
-	private lateinit var editTextEmail: TextInputEditText
-	private lateinit var editTextPassword: TextInputEditText
-	private lateinit var buttonLogin: Button
-	private lateinit var progressBar: ProgressBar
+    private lateinit var editTextEmail: TextInputEditText
+    private lateinit var editTextPassword: TextInputEditText
+    private lateinit var buttonLogin: Button
+    private lateinit var progressBar: ProgressBar
+    private lateinit var textViewVersion: android.widget.TextView
 
-	override fun onCreate(savedInstanceState: Bundle?) {
-		super.onCreate(savedInstanceState)
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
 
-		// Verifica se veio do Interceptor
-		if (intent.getBooleanExtra("LOGIN_EXPIRED", false)) {
-			Toast.makeText(this, "Sessão expirada. Faça login novamente.", Toast.LENGTH_LONG).show()
-		}
+        // Verifica se veio do Interceptor
+        if (intent.getBooleanExtra("LOGIN_EXPIRED", false)) {
+            Toast.makeText(this, "Sessão expirada. Faça login novamente.", Toast.LENGTH_LONG).show()
+        }
 
-		sessionManager = SessionManager(applicationContext)
+        sessionManager = SessionManager(applicationContext)
 
-		if (sessionManager.isLoggedIn()) {
-			navigateToApp()
-			return
-		}
+        if (sessionManager.isLoggedIn()) {
+            navigateToApp()
+            return
+        }
 
-		setContentView(R.layout.activity_main)
+        setContentView(R.layout.activity_main)
 
-		setupUI()
-		observarEstado()
+        setupUI()
+        observarEstado()
+    }
 
+    private fun setupUI() {
+        editTextEmail = findViewById(R.id.editTextEmail)
+        editTextPassword = findViewById(R.id.editTextPassword)
+        buttonLogin = findViewById(R.id.buttonLogin)
+        progressBar = findViewById(R.id.progressBar)
+        textViewVersion = findViewById(R.id.textViewVersion)
 
+        textViewVersion.text = "Versão ${BuildConfig.VERSION_NAME}"
 
-	}
+        buttonLogin.setOnClickListener { performLogin() }
+    }
 
-	private fun setupUI() {
-		editTextEmail = findViewById(R.id.editTextEmail)
-		editTextPassword = findViewById(R.id.editTextPassword)
-		buttonLogin = findViewById(R.id.buttonLogin)
-		progressBar = findViewById(R.id.progressBar)
+    private fun observarEstado() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.uiState.collect { state ->
+                    showLoading(state.isLoading)
 
-		buttonLogin.setOnClickListener {
-			performLogin()
-		}
-	}
+                    if (state.isLoggedIn) {
+                        navigateToApp()
+                    }
 
-	private fun observarEstado() {
-		lifecycleScope.launch {
-			repeatOnLifecycle(Lifecycle.State.STARTED) {
-				viewModel.uiState.collect { state ->
-					showLoading(state.isLoading)
+                    if (state.error != null) {
+                        Toast.makeText(this@MainActivity, state.error, Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
+    }
 
-					if (state.isLoggedIn) {
-						navigateToApp()
-					}
+    private fun performLogin() {
+        val email = editTextEmail.text.toString().trim()
+        val password = editTextPassword.text.toString().trim()
 
-					if (state.error != null) {
-						Toast.makeText(this@MainActivity, state.error, Toast.LENGTH_LONG).show()
-					}
-				}
-			}
-		}
-	}
+        if (email.isEmpty() || password.isEmpty()) {
+            Toast.makeText(this, "Email e senha são obrigatórios", Toast.LENGTH_SHORT).show()
+            return
+        }
 
-	private fun performLogin() {
-		val email = editTextEmail.text.toString().trim()
-		val password = editTextPassword.text.toString().trim()
+        viewModel.login(email, password)
+    }
 
-		if (email.isEmpty() || password.isEmpty()) {
-			Toast.makeText(this, "Email e senha são obrigatórios", Toast.LENGTH_SHORT).show()
-			return
-		}
+    private fun navigateToApp() {
+        val intent = Intent(this, RoutesActivity::class.java)
+        startActivity(intent)
+        finish()
+    }
 
-		viewModel.login(email, password)
-	}
-
-	private fun navigateToApp() {
-		val intent = Intent(this, RoutesActivity::class.java)
-		startActivity(intent)
-		finish()
-	}
-
-	private fun showLoading(isLoading: Boolean) {
-		progressBar.visibility = if (isLoading) View.VISIBLE else View.GONE
-		buttonLogin.isEnabled = !isLoading
-		buttonLogin.text = if (isLoading) "Entrando..." else "Entrar"
-		editTextEmail.isEnabled = !isLoading
-		editTextPassword.isEnabled = !isLoading
-	}
+    private fun showLoading(isLoading: Boolean) {
+        progressBar.visibility = if (isLoading) View.VISIBLE else View.GONE
+        buttonLogin.isEnabled = !isLoading
+        buttonLogin.text = if (isLoading) "Entrando..." else "Entrar"
+        editTextEmail.isEnabled = !isLoading
+        editTextPassword.isEnabled = !isLoading
+    }
 }

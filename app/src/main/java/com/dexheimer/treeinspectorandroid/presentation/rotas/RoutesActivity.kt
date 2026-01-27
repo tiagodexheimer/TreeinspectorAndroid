@@ -58,6 +58,10 @@ class RoutesActivity : AppCompatActivity() {
         recyclerView.layoutManager = LinearLayoutManager(this)
         recyclerView.adapter = adapter
 
+        // Exibe versão
+        val txtVersion = findViewById<android.widget.TextView>(R.id.textViewVersion)
+        txtVersion.text = "v${com.dexheimer.treeinspectorandroid.BuildConfig.VERSION_NAME}"
+
         // LÓGICA DO PULL-TO-REFRESH
         swipeRefresh.setOnRefreshListener { viewModel.forcarSincronizacaoCompleta() }
     }
