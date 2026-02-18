@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">TreeInspectorAndroid</string>
+    <string name="app_name">TreeInspector</string>
 
     <string name="mapbox_access_token">COLE_SEU_TOKEN_PÚBLICO_DO_MAPBOX_AQUI</string>
 

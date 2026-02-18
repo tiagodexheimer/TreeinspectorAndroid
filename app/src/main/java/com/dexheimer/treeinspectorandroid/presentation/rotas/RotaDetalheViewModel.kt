@@ -129,7 +129,7 @@ class RotaDetalheViewModel @Inject constructor(
 				telefoneSolicitante = null, emailSolicitante = null, prazo = null, dataCriacao = null,
 				dataAtualizacao = null, cep = null, logradouro = null, numero = null,
 				complemento = null, bairro = null, cidade = null, uf = null, tipoDemanda = null,
-				descricao = null, geom = null
+				descricao = null, geom = null, anexos = null
 			)
 			primeiraDemandaOtimizada = pendentes.minByOrNull { calcularDistancia(pontoUsuario, it) }
 		}

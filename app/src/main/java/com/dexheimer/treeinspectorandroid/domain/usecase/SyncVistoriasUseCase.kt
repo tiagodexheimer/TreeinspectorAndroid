@@ -4,167 +4,233 @@ import android.util.Log
 import com.dexheimer.treeinspectorandroid.core.util.SessionManager
 import com.dexheimer.treeinspectorandroid.data.local.DemandaDao
 import com.dexheimer.treeinspectorandroid.data.local.VistoriaDao
+import com.dexheimer.treeinspectorandroid.data.local.VistoriaPendente
 import com.dexheimer.treeinspectorandroid.data.remote.ApiService
 import com.dexheimer.treeinspectorandroid.data.remote.VistoriaRequest
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import java.io.File
+import javax.inject.Inject
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
-import java.io.File
-import javax.inject.Inject
 
-class SyncVistoriasUseCase @Inject constructor(
-	private val vistoriaDao: VistoriaDao,
-	private val demandaDao: DemandaDao,
-	private val apiService: ApiService,
-	private val sessionManager: SessionManager
+class SyncVistoriasUseCase
+@Inject
+constructor(
+        private val vistoriaDao: VistoriaDao,
+        private val demandaDao: DemandaDao,
+        private val apiService: ApiService,
+        private val sessionManager: SessionManager
 ) {
 
-	suspend operator fun invoke(): Result<Boolean> {
-		val token = sessionManager.getCookieString()
-		if (token.isNullOrEmpty()) {
-			return Result.failure(Exception("Sessão inválida"))
-		}
+    suspend operator fun invoke(): Result<Boolean> {
+        val token = sessionManager.getCookieString()
+        if (token.isNullOrEmpty()) {
+            return Result.failure(Exception("Sessão inválida"))
+        }
 
-		val pendentes = vistoriaDao.getTodasPendentes()
-		if (pendentes.isEmpty()) return Result.success(true)
+        val pendentes = vistoriaDao.getTodasPendentes()
+        if (pendentes.isEmpty()) return Result.success(true)
 
-		var todasSincronizadas = true
-		val gson = Gson()
-		// Usamos MutableMap para poder substituir o valor (Path -> URL)
-		val type = object : TypeToken<MutableMap<String, Any>>() {}.type
+        var todasSincronizadas = true
+        val gson = Gson()
+        val type = object : TypeToken<MutableMap<String, Any>>() {}.type
 
-		for (vistoria in pendentes) {
-			try {
-				Log.d("Sync", "Iniciando sincronização da demanda ${vistoria.demandaId}")
+        for (vistoria in pendentes) {
+            try {
+                Log.d("Sync", "Iniciando sincronização da demanda ${vistoria.demandaId}")
 
-				// 1. Carrega o JSON salvo localmente
-				val respostasMap: MutableMap<String, Any> = gson.fromJson(vistoria.jsonRespostas, type)
+                // 1. Carrega o JSON
+                val respostasMap: MutableMap<String, Any> =
+                        gson.fromJson(vistoria.jsonRespostas, type)
 
-				// 2. PROCESSAMENTO DE IMAGENS (UPLOAD)
-				// Varre o mapa, sobe as fotos e atualiza o mapa com as URLs
-				val uploadsSucesso = processarUploadsRecursivamente(respostasMap)
+                // 2. SALVAMENTO INICIAL (TEXTO)
+                // Garante que os dados textuais já vão pro servidor, mesmo com caminhos locais de
+                // imagem.
+                if (salvarNoServidor(vistoria.demandaId, respostasMap)) {
+                    Log.d(
+                            "Sync",
+                            "Salvamento inicial (texto) concluído para demanda ${vistoria.demandaId}"
+                    )
+                } else {
+                    Log.e(
+                            "Sync",
+                            "Falha no salvamento inicial da demanda ${vistoria.demandaId}. Abortando."
+                    )
+                    todasSincronizadas = false
+                    continue
+                }
 
-				if (!uploadsSucesso) {
-					Log.e("Sync", "Falha no upload de imagens da demanda ${vistoria.demandaId}. Tentaremos depois.")
-					todasSincronizadas = false
-					continue
-				}
+                // 3. UPLOAD INCREMENTAL
+                // Sobe foto e salva o estado imediatamente
+                val uploadsSucesso = processarUploadsIncremental(vistoria, respostasMap, gson)
 
-				// 3. Envia o JSON final (agora com URLs da Vercel)
-				val request = VistoriaRequest(vistoria.demandaId, respostasMap)
-				val response = apiService.salvarVistoria(request)
+                if (!uploadsSucesso) {
+                    Log.e(
+                            "Sync",
+                            "Falha parcial no upload de imagens da demanda ${vistoria.demandaId}."
+                    )
+                    todasSincronizadas = false
+                    continue
+                }
 
-				if (response.isSuccessful) {
-					// EM VEZ DE REMOVER, MARCA COMO SINCRONIZADA
-					vistoriaDao.marcarComoSincronizada(vistoria.id)
-					
-					demandaDao.updateStatus(vistoria.demandaId, "concluido")
-					Log.i("Sync", "Sucesso: Demanda ${vistoria.demandaId} sincronizada.")
+                // 4. Se chegou aqui, tudo foi enviado. Marca como CONCLUÍDO.
+                vistoriaDao.marcarComoSincronizada(vistoria.id)
+                demandaDao.updateStatus(vistoria.demandaId, "concluido")
+                Log.i("Sync", "Sucesso: Demanda ${vistoria.demandaId} totalmente sincronizada.")
 
-					// Opcional: Limpar arquivos locais de imagem aqui para liberar espaço
-				} else {
-					val code = response.code()
-					Log.e("Sync", "Erro API ao salvar vistoria: $code")
+                // Opcional: Limpar arquivos locais
 
-					if (code == 404 || code == 400) {
-						// Demanda não existe mais, remove da fila pra não travar
-						vistoriaDao.removerDaFila(vistoria)
-					} else {
-						todasSincronizadas = false
-					}
-				}
+            } catch (e: Exception) {
+                Log.e("Sync", "Exceção na sincronização da demanda ${vistoria.demandaId}", e)
+                todasSincronizadas = false
+            }
+        }
 
-			} catch (e: Exception) {
-				Log.e("Sync", "Exceção na sincronização", e)
-				todasSincronizadas = false
-			}
-		}
+        return Result.success(todasSincronizadas)
+    }
 
-		return Result.success(todasSincronizadas)
-	}
+    /**
+     * Varre o mapa e para cada imagem local:
+     * 1. Faz upload
+     * 2. Atualiza o mapa com a URL
+     * 3. Salva no Servidor (salvarVistoria)
+     * 4. Salva Local (atualizarVistoria)
+     */
+    private suspend fun processarUploadsIncremental(
+            vistoria: VistoriaPendente,
+            map: MutableMap<String, Any>,
+            gson: Gson
+    ): Boolean {
+        var algumErro = false
 
-	/**
-	 * Função recursiva que varre o mapa de respostas.
-	 * Se encontrar uma String que parece caminho de arquivo local, faz upload.
-	 * Se encontrar uma Lista de Strings, faz upload de cada item.
-	 */
-	private suspend fun processarUploadsRecursivamente(map: MutableMap<String, Any>): Boolean {
-		for ((key, value) in map) {
+        // Vamos iterar sobre uma cópia das chaves para evitar ConcurrentModification se
+        // precisássemos
+        // (embora aqui só estejamos alterando valores, não chaves)
+        for ((key, value) in map) {
 
-			// CASO 1: Campo de foto única (String)
-			if (value is String) {
-				if (isLocalFilePath(value)) {
-					val url = uploadToVercel(value)
-					if (url != null) {
-						map[key] = url // Substitui o Path pela URL
-					} else {
-						return false // Falha no upload, aborta sync
-					}
-				}
-			}
-			// CASO 2: Campo de múltiplas fotos (List<String>)
-			else if (value is ArrayList<*>) {
-				val listaAtualizada = mutableListOf<String>()
+            // CASO 1: Campo de foto única (String)
+            if (value is String) {
+                if (isLocalFilePath(value)) {
+                    val url = uploadToVercel(value)
+                    if (url != null) {
+                        // SUCESSO NO UPLOAD
+                        map[key] = url // Atualiza Mapa
 
-				@Suppress("UNCHECKED_CAST")
-				val listaOriginal = value as? List<String>
+                        // PERSISTE ESTADO INTERMEDIÁRIO
+                        salvarEstadoIntermediario(vistoria, map, gson)
+                    } else {
+                        // FALHA
+                        algumErro = true
+                        // Não retornamos false imediatamente para tentar subir outras fotos se
+                        // possível?
+                        // Ou abortamos para não ficar inconsistente?
+                        // O user pediu "mecanismo que vá realizando...". Se falhar uma, melhor
+                        // tentar as outras.
+                    }
+                }
+            }
+            // CASO 2: Campo de múltiplas fotos (List)
+            else if (value is ArrayList<*>) {
+                // Gson converte array JSON para ArrayList
+                @Suppress("UNCHECKED_CAST") val lista = value as? ArrayList<String>
 
-				if (listaOriginal != null) {
-					for (item in listaOriginal) {
-						if (isLocalFilePath(item)) {
-							val url = uploadToVercel(item)
-							if (url != null) {
-								listaAtualizada.add(url)
-							} else {
-								return false // Falha em um upload da lista
-							}
-						} else {
-							listaAtualizada.add(item) // Já era URL ou texto
-						}
-					}
-					map[key] = listaAtualizada // Substitui a lista inteira
-				}
-			}
-		}
-		return true
-	}
+                if (lista != null) {
+                    // Itera por índice para poder substituir in-place
+                    for (i in lista.indices) {
+                        val item = lista[i]
+                        if (isLocalFilePath(item)) {
+                            val url = uploadToVercel(item)
+                            if (url != null) {
+                                lista[i] = url // Atualiza Lista
+                                // ATENÇÃO: A lista já está dentro do 'map', pois é referência.
 
-	private fun isLocalFilePath(path: String): Boolean {
-		// Verifica se é um caminho absoluto interno do Android e tem extensão de imagem
-		return path.startsWith("/") &&
-				(path.contains("/storage/") || path.contains("/data/")) &&
-				(path.endsWith(".jpg", true) || path.endsWith(".png", true) || path.endsWith(".jpeg", true))
-	}
+                                // PERSISTE ESTADO INTERMEDIÁRIO
+                                salvarEstadoIntermediario(vistoria, map, gson)
+                            } else {
+                                algumErro = true
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return !algumErro
+    }
 
-	private suspend fun uploadToVercel(filePath: String): String? {
-		val file = File(filePath)
-		if (!file.exists()) {
-			Log.w("Upload", "Arquivo não encontrado: $filePath")
-			return null
-		}
+    private suspend fun salvarEstadoIntermediario(
+            vistoria: VistoriaPendente,
+            map: Map<String, Any>,
+            gson: Gson
+    ) {
+        try {
+            // 1. Salva no Servidor
+            salvarNoServidor(vistoria.demandaId, map)
 
-		return try {
-			Log.d("Upload", "Iniciando upload: ${file.name}")
+            // 2. Salva Localmente (para retomar em caso de crash)
+            val novoJson = gson.toJson(map)
+            vistoriaDao.atualizarVistoria(
+                    demandaId = vistoria.demandaId,
+                    json = novoJson,
+                    sincronizado = false, // Ainda não acabou
+                    data = vistoria.dataCriacao
+            )
+        } catch (e: Exception) {
+            Log.w(
+                    "Sync",
+                    "Erro ao salvar estado intermediário (prosseguindo com uploads): ${e.message}"
+            )
+        }
+    }
 
-			val requestFile = file.asRequestBody("image/jpeg".toMediaTypeOrNull())
-			val body = MultipartBody.Part.createFormData("file", file.name, requestFile)
+    private suspend fun salvarNoServidor(demandaId: Int, map: Map<String, Any>): Boolean {
+        return try {
+            val request = VistoriaRequest(demandaId, map)
+            val response = apiService.salvarVistoria(request)
+            if (!response.isSuccessful) {
+                Log.e("Sync", "Erro API salvarVistoria: ${response.code()}")
+            }
+            response.isSuccessful
+        } catch (e: Exception) {
+            Log.e("Sync", "Erro de rede salvarVistoria", e)
+            false
+        }
+    }
 
-			// Usa a rota criada no Passo 2
-			val response = apiService.uploadImage(body, file.name)
+    private fun isLocalFilePath(path: String): Boolean {
+        return path.startsWith("/") &&
+                (path.contains("/storage/") || path.contains("/data/")) &&
+                (path.endsWith(".jpg", true) ||
+                        path.endsWith(".png", true) ||
+                        path.endsWith(".jpeg", true))
+    }
 
-			if (response.isSuccessful && response.body() != null) {
-				val url = response.body()!!.url
-				Log.d("Upload", "Upload concluído: $url")
-				url
-			} else {
-				Log.e("Upload", "Erro no upload: ${response.code()}")
-				null
-			}
-		} catch (e: Exception) {
-			Log.e("Upload", "Falha de rede no upload", e)
-			null
-		}
-	}
+    private suspend fun uploadToVercel(filePath: String): String? {
+        val file = File(filePath)
+        if (!file.exists()) {
+            Log.w("Upload", "Arquivo não encontrado: $filePath")
+            return null
+        }
+
+        return try {
+            Log.d("Upload", "Iniciando upload: ${file.name}")
+            val requestFile = file.asRequestBody("image/jpeg".toMediaTypeOrNull())
+            val body = MultipartBody.Part.createFormData("file", file.name, requestFile)
+
+            val response = apiService.uploadImage(body, file.name)
+
+            if (response.isSuccessful && response.body() != null) {
+                val url = response.body()!!.url
+                Log.d("Upload", "Upload concluído: $url")
+                url
+            } else {
+                Log.e("Upload", "Erro no upload: ${response.code()}")
+                null
+            }
+        } catch (e: Exception) {
+            Log.e("Upload", "Falha de rede no upload", e)
+            null
+        }
+    }
 }
