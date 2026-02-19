@@ -9,6 +9,7 @@ import android.os.Bundle
 import android.os.Environment
 import android.text.Editable
 import android.text.TextWatcher
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -23,9 +24,11 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.dexheimer.treeinspectorandroid.R
+import com.dexheimer.treeinspectorandroid.core.util.ImageWatermarkUtils
 import com.dexheimer.treeinspectorandroid.domain.model.CreateDemandaParams
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.textfield.TextInputEditText
@@ -35,6 +38,9 @@ import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @AndroidEntryPoint
 class CriarDemandaActivity : AppCompatActivity() {
@@ -84,7 +90,7 @@ class CriarDemandaActivity : AppCompatActivity() {
     private val takePictureLauncher =
             registerForActivityResult(ActivityResultContracts.TakePicture()) { success ->
                 if (success && currentPhotoPath != null) {
-                    viewModel.addFoto(currentPhotoPath!!)
+                    processarFotoComLegenda(currentPhotoPath!!)
                 }
             }
 
@@ -254,6 +260,55 @@ class CriarDemandaActivity : AppCompatActivity() {
                     FileProvider.getUriForFile(this, "${packageName}.fileprovider", photoFile)
             currentPhotoPath = photoFile.absolutePath
             takePictureLauncher.launch(photoUri)
+        }
+    }
+
+    private fun processarFotoComLegenda(path: String) {
+        progressBar.visibility = View.VISIBLE
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val dateStr =
+                        SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault()).format(Date())
+
+                val addressInfo = viewModel.addressInfo.value
+                val gpsStr =
+                        if (addressInfo?.lat != null && addressInfo.lng != null) {
+                            "Lat: ${String.format("%.5f", addressInfo.lat)} | Lon: ${String.format("%.5f", addressInfo.lng)}"
+                        } else {
+                            "GPS: Indisponível"
+                        }
+
+                // Monta endereço a partir dos campos do formulário
+                val logradouro = addressInfo?.logradouro ?: ""
+                val bairro = addressInfo?.bairro ?: ""
+                val cidade = addressInfo?.cidade ?: ""
+                val addressParts = mutableListOf<String>()
+                if (logradouro.isNotEmpty()) addressParts.add(logradouro)
+                if (bairro.isNotEmpty()) {
+                    if (addressParts.isNotEmpty())
+                            addressParts[addressParts.size - 1] += " - $bairro"
+                    else addressParts.add(bairro)
+                }
+                if (cidade.isNotEmpty()) addressParts.add(cidade)
+                val addressStr =
+                        if (addressParts.isNotEmpty()) "\n${addressParts.joinToString("\n")}"
+                        else ""
+
+                val textoFinal = "$dateStr\n$gpsStr$addressStr"
+                val sucesso = ImageWatermarkUtils.waterMarkImage(path, textoFinal)
+
+                withContext(Dispatchers.Main) {
+                    if (!sucesso) Log.w("CriarDemanda", "Falha ao gravar marca d'água")
+                    viewModel.addFoto(path)
+                    progressBar.visibility = View.GONE
+                }
+            } catch (e: Exception) {
+                Log.e("CriarDemanda", "Erro ao processar foto: ${e.message}", e)
+                withContext(Dispatchers.Main) {
+                    viewModel.addFoto(path) // Adiciona mesmo sem legenda
+                    progressBar.visibility = View.GONE
+                }
+            }
         }
     }
 
