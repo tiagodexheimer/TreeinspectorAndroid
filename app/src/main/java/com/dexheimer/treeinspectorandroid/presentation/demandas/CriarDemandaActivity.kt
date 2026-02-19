@@ -1,8 +1,12 @@
 package com.dexheimer.treeinspectorandroid.presentation.demandas
 
 import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
+import android.location.LocationManager
 import android.os.Bundle
+import android.os.Environment
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.LayoutInflater
@@ -17,10 +21,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.dexheimer.treeinspectorandroid.R
-import com.dexheimer.treeinspectorandroid.data.remote.CreateDemandaRequest
+import com.dexheimer.treeinspectorandroid.domain.model.CreateDemandaParams
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.textfield.TextInputEditText
 import dagger.hilt.android.AndroidEntryPoint
@@ -29,12 +35,6 @@ import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import android.os.Environment
-import android.content.Context
-import android.content.pm.PackageManager
-import android.location.LocationManager
-import androidx.core.content.ContextCompat
-import androidx.core.content.FileProvider
 
 @AndroidEntryPoint
 class CriarDemandaActivity : AppCompatActivity() {
@@ -42,8 +42,6 @@ class CriarDemandaActivity : AppCompatActivity() {
     private val viewModel: CriarDemandaViewModel by viewModels()
 
     private lateinit var toolbar: Toolbar
-    private lateinit var editNomeSolicitante: TextInputEditText
-    private lateinit var editTelefoneSolicitante: TextInputEditText
     private lateinit var editCep: TextInputEditText
     private lateinit var editLogradouro: TextInputEditText
     private lateinit var editNumero: TextInputEditText
@@ -88,6 +86,11 @@ class CriarDemandaActivity : AppCompatActivity() {
                 if (success && currentPhotoPath != null) {
                     viewModel.addFoto(currentPhotoPath!!)
                 }
+            }
+
+    private val requestCameraPermissionLauncher =
+            registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                if (granted) abrirCamera()
             }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -240,10 +243,7 @@ class CriarDemandaActivity : AppCompatActivity() {
         ) {
             abrirCamera()
         } else {
-            registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-                        if (granted) abrirCamera()
-                    }
-                    .launch(Manifest.permission.CAMERA)
+            requestCameraPermissionLauncher.launch(Manifest.permission.CAMERA)
         }
     }
 
@@ -282,8 +282,8 @@ class CriarDemandaActivity : AppCompatActivity() {
         }
 
         val addressInfo = viewModel.addressInfo.value
-        val request =
-                CreateDemandaRequest(
+        val params =
+                CreateDemandaParams(
                         nome_solicitante = nome,
                         telefone_solicitante = null,
                         email_solicitante = null,
@@ -299,7 +299,7 @@ class CriarDemandaActivity : AppCompatActivity() {
                         anexos = emptyList()
                 )
 
-        viewModel.salvarDemanda(request)
+        viewModel.salvarDemanda(params)
     }
 }
 

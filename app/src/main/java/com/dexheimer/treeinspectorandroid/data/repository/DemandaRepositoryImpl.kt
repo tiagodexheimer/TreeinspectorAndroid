@@ -62,9 +62,28 @@ constructor(private val api: ApiService, private val dao: DemandaDao) : DemandaR
                 }
             }
 
-    override suspend fun criarDemanda(request: CreateDemandaRequest): Result<Unit> =
+    override suspend fun criarDemanda(
+            params: com.dexheimer.treeinspectorandroid.domain.model.CreateDemandaParams
+    ): Result<Unit> =
             withContext(Dispatchers.IO) {
                 try {
+                    val request =
+                            CreateDemandaRequest(
+                                    nome_solicitante = params.nome_solicitante,
+                                    telefone_solicitante = params.telefone_solicitante,
+                                    email_solicitante = params.email_solicitante,
+                                    cep = params.cep,
+                                    logradouro = params.logradouro,
+                                    numero = params.numero,
+                                    complemento = params.complemento,
+                                    bairro = params.bairro,
+                                    cidade = params.cidade,
+                                    uf = params.uf,
+                                    tipo_demanda = params.tipo_demanda,
+                                    descricao = params.descricao,
+                                    coordinates = params.coordinates,
+                                    anexos = params.anexos
+                            )
                     val response = api.criarDemanda(request)
                     if (response.isSuccessful) {
                         Result.success(Unit)

@@ -7,7 +7,7 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.dexheimer.treeinspectorandroid.data.remote.CreateDemandaRequest
+import com.dexheimer.treeinspectorandroid.domain.model.CreateDemandaParams
 import com.dexheimer.treeinspectorandroid.domain.repository.DemandaRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.Locale
@@ -108,37 +108,7 @@ class CriarDemandaViewModel @Inject constructor(private val repository: DemandaR
     }
 
     private fun mapStateNameToCode(name: String): String {
-        val states =
-                mapOf(
-                        "Acre" to "AC",
-                        "Alagoas" to "AL",
-                        "Amapá" to "AP",
-                        "Amazonas" to "AM",
-                        "Bahia" to "BA",
-                        "Ceará" to "CE",
-                        "Distrito Federal" to "DF",
-                        "Espírito Santo" to "ES",
-                        "Goiás" to "GO",
-                        "Maranhão" to "MA",
-                        "Mato Grosso" to "MT",
-                        "Mato Grosso do Sul" to "MS",
-                        "Minas Gerais" to "MG",
-                        "Pará" to "PA",
-                        "Paraíba" to "PB",
-                        "Paraná" to "PR",
-                        "Pernambuco" to "PE",
-                        "Piauí" to "PI",
-                        "Rio de Janeiro" to "RJ",
-                        "Rio Grande do Norte" to "RN",
-                        "Rio Grande do Sul" to "RS",
-                        "Rondônia" to "RO",
-                        "Roraima" to "RR",
-                        "Santa Catarina" to "SC",
-                        "São Paulo" to "SP",
-                        "Sergipe" to "SE",
-                        "Tocantins" to "TO"
-                )
-        return states[name] ?: name.substring(0, minOf(name.length, 2)).uppercase()
+        return STATE_NAME_TO_CODE[name] ?: name.substring(0, minOf(name.length, 2)).uppercase()
     }
 
     fun updateCepFromAddress(context: Context, logradouro: String, cidade: String) {
@@ -174,7 +144,7 @@ class CriarDemandaViewModel @Inject constructor(private val repository: DemandaR
         }
     }
 
-    fun salvarDemanda(request: CreateDemandaRequest) {
+    fun salvarDemanda(params: CreateDemandaParams) {
         _uiState.value = CriarDemandaUiState.Loading("Enviando demanda e fotos...")
         viewModelScope.launch {
             val fotosLocais = _fotos.value ?: emptyList()
@@ -199,8 +169,8 @@ class CriarDemandaViewModel @Inject constructor(private val repository: DemandaR
             // 2. Create demand with URLs
             if (!uploadError) {
                 _uiState.value = CriarDemandaUiState.Loading("Registrando demanda...")
-                val finalRequest = request.copy(anexos = urlsAnexos)
-                val result = repository.criarDemanda(finalRequest)
+                val finalParams = params.copy(anexos = urlsAnexos)
+                val result = repository.criarDemanda(finalParams)
                 result.onSuccess { _uiState.value = CriarDemandaUiState.Success }.onFailure {
                     _uiState.value =
                             CriarDemandaUiState.Error("Falha ao criar demanda: ${it.message}")
@@ -225,4 +195,37 @@ class CriarDemandaViewModel @Inject constructor(private val repository: DemandaR
             val lat: Double? = null,
             val lng: Double? = null
     )
+
+    companion object {
+        private val STATE_NAME_TO_CODE =
+                mapOf(
+                        "Acre" to "AC",
+                        "Alagoas" to "AL",
+                        "Amapá" to "AP",
+                        "Amazonas" to "AM",
+                        "Bahia" to "BA",
+                        "Ceará" to "CE",
+                        "Distrito Federal" to "DF",
+                        "Espírito Santo" to "ES",
+                        "Goiás" to "GO",
+                        "Maranhão" to "MA",
+                        "Mato Grosso" to "MT",
+                        "Mato Grosso do Sul" to "MS",
+                        "Minas Gerais" to "MG",
+                        "Pará" to "PA",
+                        "Paraíba" to "PB",
+                        "Paraná" to "PR",
+                        "Pernambuco" to "PE",
+                        "Piauí" to "PI",
+                        "Rio de Janeiro" to "RJ",
+                        "Rio Grande do Norte" to "RN",
+                        "Rio Grande do Sul" to "RS",
+                        "Rondônia" to "RO",
+                        "Roraima" to "RR",
+                        "Santa Catarina" to "SC",
+                        "São Paulo" to "SP",
+                        "Sergipe" to "SE",
+                        "Tocantins" to "TO"
+                )
+    }
 }
