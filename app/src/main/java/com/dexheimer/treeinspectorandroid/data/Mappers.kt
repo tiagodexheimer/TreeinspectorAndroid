@@ -3,7 +3,9 @@ package com.dexheimer.treeinspectorandroid.data
 import com.dexheimer.treeinspectorandroid.data.local.DemandaEntity
 import com.dexheimer.treeinspectorandroid.data.local.RotaEntity
 import com.dexheimer.treeinspectorandroid.data.remote.DemandaDTO
+import com.dexheimer.treeinspectorandroid.data.remote.NotificacaoDTO
 import com.dexheimer.treeinspectorandroid.domain.model.Demanda
+import com.dexheimer.treeinspectorandroid.domain.model.Notificacao
 import com.dexheimer.treeinspectorandroid.domain.model.Rota
 
 // --- DTO -> ENTITY (Da API para o Banco de Dados) ---
@@ -123,5 +125,19 @@ fun Demanda.toEntity(rotaId: Int): DemandaEntity {
             anexos = this.anexos,
             statusVistoria = this.statusVistoria,
             rotaId = rotaId
+    )
+}
+
+fun NotificacaoDTO.toDomain(): Notificacao {
+    return Notificacao(
+            id = this.id,
+            numeroProcesso = this.numeroProcesso,
+            numeroNotificacao = this.numeroNotificacao,
+            descricao = this.descricao,
+            dataEmissao = this.dataEmissao,
+            prazoDias = this.prazoDias,
+            vencimento = this.vencimento,
+            status = this.status,
+            fotos = this.fotos
     )
 }

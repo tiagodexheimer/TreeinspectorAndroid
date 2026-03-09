@@ -121,4 +121,7 @@ interface ApiService {
     @GET("api/demandas-tipos")
     suspend fun getDemandTypes():
             Response<List<com.dexheimer.treeinspectorandroid.domain.model.TipoDemanda>>
+
+    @GET("api/notificacoes")
+    suspend fun getNotificacoes(@Query("demanda_id") demandaId: Int): Response<List<NotificacaoDTO>>
 }

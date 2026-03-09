@@ -37,6 +37,7 @@ import com.dexheimer.treeinspectorandroid.R
 import com.dexheimer.treeinspectorandroid.core.util.ImageWatermarkUtils
 import com.dexheimer.treeinspectorandroid.data.remote.FormField
 import com.dexheimer.treeinspectorandroid.domain.model.Demanda
+import com.dexheimer.treeinspectorandroid.domain.repository.DemandaRepository
 import com.dexheimer.treeinspectorandroid.domain.usecase.SaveResult
 import com.dexheimer.treeinspectorandroid.presentation.vistoria.form.FormRendererFactory
 import com.dexheimer.treeinspectorandroid.presentation.vistoria.form.renderers.MultiPhotoRenderer
@@ -56,6 +57,7 @@ import kotlinx.coroutines.withContext
 class VistoriaActivity : AppCompatActivity() {
 
     @Inject lateinit var rendererFactory: FormRendererFactory
+    @Inject lateinit var demandaRepository: DemandaRepository
 
     private val viewModel: VistoriaViewModel by viewModels()
 
@@ -172,6 +174,7 @@ class VistoriaActivity : AppCompatActivity() {
 
         if (demandaAtual != null) {
             preencherCabecalho()
+            buscarNotificacoes()
             viewModel.carregarRascunho(demandaAtual!!.id)
             demandaAtual?.tipoDemanda?.let { viewModel.buscarFormulario(it) }
         } else if (extraId != -1) {
@@ -652,6 +655,64 @@ class VistoriaActivity : AppCompatActivity() {
                                                 .apply { setMargins(0, 0, 0, 8) }
                             }
             containerAnexosExistentes.addView(btn)
+        }
+    }
+
+    private fun buscarNotificacoes() {
+        val demanda = demandaAtual ?: return
+
+        lifecycleScope.launch {
+            try {
+                val notificacoes = demandaRepository.getNotificacoesByDemanda(demanda.id)
+                notificacoes.forEach { notificacao ->
+                    notificacao.fotos?.forEach { anexo ->
+                        sectionAnexosExistentes.visibility = View.VISIBLE
+                        val btn =
+                                Button(
+                                                this@VistoriaActivity,
+                                                null,
+                                                com.google
+                                                        .android
+                                                        .material
+                                                        .R
+                                                        .style
+                                                        .Widget_MaterialComponents_Button_OutlinedButton
+                                        )
+                                        .apply {
+                                            text = "📋 [Notif] ${anexo.nome}"
+                                            isAllCaps = false
+                                            setOnClickListener {
+                                                try {
+                                                    val intent =
+                                                            Intent(
+                                                                    Intent.ACTION_VIEW,
+                                                                    Uri.parse(anexo.url)
+                                                            )
+                                                    startActivity(intent)
+                                                } catch (e: Exception) {
+                                                    Toast.makeText(
+                                                                    context,
+                                                                    "Não foi possível abrir o anexo.",
+                                                                    Toast.LENGTH_SHORT
+                                                            )
+                                                            .show()
+                                                }
+                                            }
+                                            layoutParams =
+                                                    LinearLayout.LayoutParams(
+                                                                    LinearLayout.LayoutParams
+                                                                            .MATCH_PARENT,
+                                                                    LinearLayout.LayoutParams
+                                                                            .WRAP_CONTENT
+                                                            )
+                                                            .apply { setMargins(0, 0, 0, 8) }
+                                        }
+                        containerAnexosExistentes.addView(btn)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("VistoriaActivity", "Erro ao buscar notificações", e)
+            }
         }
     }
 }

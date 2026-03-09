@@ -65,6 +65,11 @@
             android:exported="false" />
 
         <activity
+            android:name=".presentation.demandas.DemandaDetalheActivity"
+            android:label="Detalhes da Demanda"
+            android:exported="false" />
+
+        <activity
             android:name=".presentation.demandas.CriarDemandaActivity"
             android:label="Nova Demanda"
             android:windowSoftInputMode="adjustResize"

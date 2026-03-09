@@ -132,4 +132,21 @@ constructor(private val api: ApiService, private val dao: DemandaDao) : DemandaR
                     Result.failure(e)
                 }
             }
+
+    override suspend fun getNotificacoesByDemanda(
+            demandaId: Int
+    ): List<com.dexheimer.treeinspectorandroid.domain.model.Notificacao> =
+            withContext(Dispatchers.IO) {
+                try {
+                    val response = api.getNotificacoes(demandaId)
+                    if (response.isSuccessful && response.body() != null) {
+                        response.body()!!.map { it.toDomain() }
+                    } else {
+                        emptyList()
+                    }
+                } catch (e: Exception) {
+                    Log.e("DemandaRepo", "Erro ao buscar notificações: ${e.message}")
+                    emptyList()
+                }
+            }
 }

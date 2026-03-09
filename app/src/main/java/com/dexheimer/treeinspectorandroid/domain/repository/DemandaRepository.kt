@@ -11,4 +11,7 @@ interface DemandaRepository {
     suspend fun uploadImage(filePath: String): Result<String>
     suspend fun getTiposDemanda():
             Result<List<com.dexheimer.treeinspectorandroid.domain.model.TipoDemanda>>
+    suspend fun getNotificacoesByDemanda(
+            demandaId: Int
+    ): List<com.dexheimer.treeinspectorandroid.domain.model.Notificacao>
 }
