@@ -22,6 +22,7 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
+import com.google.android.gms.location.*
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
@@ -87,9 +88,14 @@ class VistoriaActivity : AppCompatActivity() {
     private val formViews = mutableMapOf<String, View>()
     private var fieldDefinitions = emptyList<FormField>()
     private val fotosEstaticasFilePaths = mutableListOf<String>()
-    private var lastDraft: Map<String, Any>? = null
+    
+    // GPS Ativo
+    private lateinit var fusedLocationClient: FusedLocationProviderClient
+    private lateinit var locationCallback: LocationCallback
+    private var isMonitoringLocation = false
 
     private var isSaving = false
+    private var lastDraft: Map<String, Any>? = null
 
     // --- Controle de Imagens, GPS e Permissões ---
     private var currentPhotoField: String? = null
@@ -152,6 +158,7 @@ class VistoriaActivity : AppCompatActivity() {
 
         setupUI()
         setupToolbar()
+        setupLocationClient()
 
         savedInstanceState?.let { bundle ->
             currentPhotoField = bundle.getString(STATE_PHOTO_FIELD)
@@ -207,6 +214,14 @@ class VistoriaActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         salvarRascunhoLocal()
+        stopLocationUpdates()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            startLocationUpdates()
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -582,11 +597,8 @@ class VistoriaActivity : AppCompatActivity() {
 
     private fun abrirCameraSegura(fieldName: String, hasLocationPermission: Boolean) {
         currentPhotoField = fieldName
-        if (hasLocationPermission) {
-            val loc = obterLocalizacaoRapida()
-            if (loc != null) capturedLocation = loc
-        }
-
+        // capturedLocation já estará atualizado pelo monitoramento contínuo
+        
         val photoFile = criarArquivoImagem()
         if (photoFile != null) {
             currentPhotoPath = photoFile.absolutePath
@@ -602,21 +614,46 @@ class VistoriaActivity : AppCompatActivity() {
         }
     }
 
-    private fun obterLocalizacaoRapida(): Location? {
-        val locManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        return try {
-            if (ActivityCompat.checkSelfPermission(
-                            this,
-                            Manifest.permission.ACCESS_FINE_LOCATION
-                    ) == PackageManager.PERMISSION_GRANTED
-            ) {
-                val gps = locManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-                val net = locManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
-                gps ?: net
-            } else null
-        } catch (e: Exception) {
-            null
+    private fun setupLocationClient() {
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+        
+        locationCallback = object : LocationCallback() {
+            override fun onLocationResult(locationResult: LocationResult) {
+                locationResult.lastLocation?.let { location ->
+                    capturedLocation = location
+                    Log.d("GPS", "Localização atualizada: ${location.latitude}, ${location.longitude}")
+                }
+            }
         }
+    }
+
+    private fun startLocationUpdates() {
+        if (isMonitoringLocation) return
+        
+        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 5000) // 5 segundos
+            .setWaitForAccurateLocation(false)
+            .setMinUpdateIntervalMillis(2000)
+            .build()
+
+        try {
+            fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper())
+            isMonitoringLocation = true
+            Log.i("GPS", "Monitoramento de GPS iniciado.")
+        } catch (e: SecurityException) {
+            Log.e("GPS", "Erro ao iniciar GPS: ${e.message}")
+        }
+    }
+
+    private fun stopLocationUpdates() {
+        if (!isMonitoringLocation) return
+        fusedLocationClient.removeLocationUpdates(locationCallback)
+        isMonitoringLocation = false
+        Log.i("GPS", "Monitoramento de GPS parado.")
+    }
+
+    private fun obterLocalizacaoRapida(): Location? {
+        // Agora mantemos este método apenas como fallback, mas o monitoramento ativo é a prioridade.
+        return capturedLocation
     }
 
     private fun criarArquivoImagem(): File? {
