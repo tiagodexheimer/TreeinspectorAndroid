@@ -15,9 +15,18 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
 
+import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
+import id.zelory.compressor.Compressor
+import id.zelory.compressor.constraint.format
+import id.zelory.compressor.constraint.quality
+import id.zelory.compressor.constraint.resolution
+import android.graphics.Bitmap
+
 class SyncVistoriasUseCase
 @Inject
 constructor(
+        @ApplicationContext private val context: Context,
         private val vistoriaDao: VistoriaDao,
         private val demandaDao: DemandaDao,
         private val apiService: ApiService,
@@ -105,48 +114,39 @@ constructor(
     ): Boolean {
         var algumErro = false
 
-        // Vamos iterar sobre uma cópia das chaves para evitar ConcurrentModification se
-        // precisássemos
-        // (embora aqui só estejamos alterando valores, não chaves)
         for ((key, value) in map) {
-
             // CASO 1: Campo de foto única (String)
-            if (value is String) {
-                if (isLocalFilePath(value)) {
-                    val url = uploadToVercel(value)
-                    if (url != null) {
-                        // SUCESSO NO UPLOAD
-                        map[key] = url // Atualiza Mapa
+            if (value is String && isLocalFilePath(value)) {
+                val processedPath = ensureWebP(value)
+                if (processedPath != value) {
+                    map[key] = processedPath
+                    salvarEstadoIntermediario(vistoria, map, gson)
+                }
 
-                        // PERSISTE ESTADO INTERMEDIÁRIO
-                        salvarEstadoIntermediario(vistoria, map, gson)
-                    } else {
-                        // FALHA
-                        algumErro = true
-                        // Não retornamos false imediatamente para tentar subir outras fotos se
-                        // possível?
-                        // Ou abortamos para não ficar inconsistente?
-                        // O user pediu "mecanismo que vá realizando...". Se falhar uma, melhor
-                        // tentar as outras.
-                    }
+                val url = uploadToVercel(processedPath)
+                if (url != null) {
+                    map[key] = url
+                    salvarEstadoIntermediario(vistoria, map, gson)
+                } else {
+                    algumErro = true
                 }
             }
             // CASO 2: Campo de múltiplas fotos (List)
             else if (value is ArrayList<*>) {
-                // Gson converte array JSON para ArrayList
                 @Suppress("UNCHECKED_CAST") val lista = value as? ArrayList<String>
-
                 if (lista != null) {
-                    // Itera por índice para poder substituir in-place
                     for (i in lista.indices) {
                         val item = lista[i]
                         if (isLocalFilePath(item)) {
-                            val url = uploadToVercel(item)
-                            if (url != null) {
-                                lista[i] = url // Atualiza Lista
-                                // ATENÇÃO: A lista já está dentro do 'map', pois é referência.
+                            val processedPath = ensureWebP(item)
+                            if (processedPath != item) {
+                                lista[i] = processedPath
+                                salvarEstadoIntermediario(vistoria, map, gson)
+                            }
 
-                                // PERSISTE ESTADO INTERMEDIÁRIO
+                            val url = uploadToVercel(processedPath)
+                            if (url != null) {
+                                lista[i] = url
                                 salvarEstadoIntermediario(vistoria, map, gson)
                             } else {
                                 algumErro = true
@@ -157,6 +157,34 @@ constructor(
             }
         }
         return !algumErro
+    }
+
+    private suspend fun ensureWebP(path: String): String {
+        if (path.endsWith(".webp", true)) return path
+
+        Log.w("Sync", "Fallback: Arquivo não é WebP. Iniciando compressão de emergência: $path")
+        return try {
+            val originalFile = File(path)
+            if (!originalFile.exists()) return path
+
+            val compressedFile = Compressor.compress(context, originalFile) {
+                resolution(1600, 1600)
+                quality(75)
+                format(Bitmap.CompressFormat.WEBP)
+            }
+
+            val finalFile = File(originalFile.parent, originalFile.name.substringBeforeLast(".") + "_emergency.webp")
+            compressedFile.copyTo(finalFile, overwrite = true)
+            compressedFile.delete()
+            
+            if (originalFile.exists()) originalFile.delete()
+            
+            Log.i("Sync", "Compressão de emergência concluída: ${finalFile.absolutePath}")
+            finalFile.absolutePath
+        } catch (e: Exception) {
+            Log.e("Sync", "Falha na compressão de emergência", e)
+            path
+        }
     }
 
     private suspend fun salvarEstadoIntermediario(
@@ -216,7 +244,14 @@ constructor(
 
         return try {
             Log.d("Upload", "Iniciando upload: ${file.name} (${file.length() / 1024} KB)")
-            val requestFile = file.asRequestBody("image/jpeg".toMediaTypeOrNull())
+            
+            val mediaType = if (file.name.endsWith(".webp", true)) {
+                "image/webp".toMediaTypeOrNull()
+            } else {
+                "image/jpeg".toMediaTypeOrNull()
+            }
+
+            val requestFile = file.asRequestBody(mediaType)
             val body = MultipartBody.Part.createFormData("file", file.name, requestFile)
 
             val response = apiService.uploadImage(body, file.name)
