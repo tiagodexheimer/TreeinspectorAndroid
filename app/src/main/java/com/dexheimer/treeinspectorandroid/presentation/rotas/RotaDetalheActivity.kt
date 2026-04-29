@@ -87,6 +87,7 @@ class RotaDetalheActivity : AppCompatActivity() {
                     val demandaId = result.data?.getIntExtra("DEMANDA_ID", -1) ?: -1
                     if (novoStatus != null && demandaId != -1) {
                         viewModel.atualizarStatusDemanda(demandaId, novoStatus)
+                        viewModel.sincronizar() // <--- Gatilho Automático ao finalizar
                     }
                 }
             }

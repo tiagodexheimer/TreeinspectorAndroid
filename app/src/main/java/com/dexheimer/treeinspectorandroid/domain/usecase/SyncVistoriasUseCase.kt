@@ -77,7 +77,7 @@ constructor(
 
                 // 4. Se chegou aqui, tudo foi enviado. Marca como CONCLUÍDO.
                 vistoriaDao.marcarComoSincronizada(vistoria.id)
-                demandaDao.updateStatus(vistoria.demandaId, "concluido")
+                demandaDao.updateStatus(vistoria.demandaId, "Concluído")
                 Log.i("Sync", "Sucesso: Demanda ${vistoria.demandaId} totalmente sincronizada.")
 
                 // Opcional: Limpar arquivos locais
@@ -203,7 +203,8 @@ constructor(
                 (path.contains("/storage/") || path.contains("/data/")) &&
                 (path.endsWith(".jpg", true) ||
                         path.endsWith(".png", true) ||
-                        path.endsWith(".jpeg", true))
+                        path.endsWith(".jpeg", true) ||
+                        path.endsWith(".webp", true))
     }
 
     private suspend fun uploadToVercel(filePath: String): String? {
@@ -214,7 +215,7 @@ constructor(
         }
 
         return try {
-            Log.d("Upload", "Iniciando upload: ${file.name}")
+            Log.d("Upload", "Iniciando upload: ${file.name} (${file.length() / 1024} KB)")
             val requestFile = file.asRequestBody("image/jpeg".toMediaTypeOrNull())
             val body = MultipartBody.Part.createFormData("file", file.name, requestFile)
 

@@ -52,6 +52,12 @@ import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import id.zelory.compressor.Compressor
+import id.zelory.compressor.constraint.format
+import id.zelory.compressor.constraint.quality
+import id.zelory.compressor.constraint.resolution
+import android.graphics.Bitmap
+import com.dexheimer.treeinspectorandroid.presentation.vistoria.form.renderers.PhotoRenderer
 
 @AndroidEntryPoint
 class VistoriaActivity : AppCompatActivity() {
@@ -381,10 +387,34 @@ class VistoriaActivity : AppCompatActivity() {
 
                 val textoFinal = "$dateStr\n$gpsStr$addressStr"
                 val sucesso = ImageWatermarkUtils.waterMarkImage(path, textoFinal)
+                
+                // --- Compressão da Imagem ---
+                val originalFile = File(path)
+                val compressedFile = Compressor.compress(this@VistoriaActivity, originalFile) {
+                    resolution(1600, 1600)
+                    quality(75)
+                    format(Bitmap.CompressFormat.WEBP)
+                }
+
+                // Move para o diretório final com a extensão correta (.webp)
+                // Usamos o mesmo diretório do original para garantir persistência
+                val finalFileName = originalFile.name.substringBeforeLast(".") + ".webp"
+                val finalFile = File(originalFile.parent, finalFileName)
+                
+                // Se o arquivo comprimido for diferente do destino final, movemos ele
+                if (compressedFile.absolutePath != finalFile.absolutePath) {
+                    compressedFile.copyTo(finalFile, overwrite = true)
+                    compressedFile.delete()
+                }
+
+                // Deleta o original se for diferente do arquivo final (evita deletar o próprio WebP se já for)
+                if (originalFile.exists() && originalFile.absolutePath != finalFile.absolutePath) {
+                    originalFile.delete()
+                }
 
                 withContext(Dispatchers.Main) {
                     if (!sucesso) Log.w("VistoriaActivity", "Falha ao gravar marca d'água")
-                    adicionarFotoNaTela(currentPhotoField ?: "", path)
+                    adicionarFotoNaTela(currentPhotoField ?: "", finalFile.absolutePath)
                 }
             } catch (e: Exception) {
                 Log.e("VistoriaActivity", "Erro ao processar foto: ${e.message}", e)
@@ -442,7 +472,14 @@ class VistoriaActivity : AppCompatActivity() {
             adicionarFotoViewEstatica(path)
         } else {
             val viewContainer = formViews[fieldName]
-            viewContainer?.let { MultiPhotoRenderer.addPhotoToView(it, path) }
+            if (viewContainer != null) {
+                // Tenta atualizar como MultiPhoto ou Single Photo
+                if (viewContainer.findViewWithTag<View>("photos_container") != null) {
+                    MultiPhotoRenderer.addPhotoToView(viewContainer, path)
+                } else if (viewContainer.findViewWithTag<View>("path_value") != null) {
+                    PhotoRenderer.updatePhoto(viewContainer, path)
+                }
+            }
         }
     }
 
@@ -578,7 +615,7 @@ class VistoriaActivity : AppCompatActivity() {
         when (result) {
             is SaveResult.Success -> {
                 // Mensagem de sucesso (Offline First)
-                finalizarComSucesso("Vistoria salva! Sincronizando...", "concluido_pendente")
+                finalizarComSucesso("Vistoria salva! Sincronizando...", "Concluído")
             }
             is SaveResult.Failure -> {
                 showLoading(false)

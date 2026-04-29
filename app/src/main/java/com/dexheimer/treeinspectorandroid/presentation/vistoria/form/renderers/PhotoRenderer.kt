@@ -100,4 +100,43 @@ class PhotoRenderer : FormFieldRenderer {
 		val path = pathView?.text?.toString()
 		return if (path.isNullOrEmpty()) null else path
 	}
+
+	companion object {
+		fun updatePhoto(viewContainer: View, photoPath: String) {
+			val context = viewContainer.context
+			
+			// 1. Atualiza o caminho oculto
+			val pathView = viewContainer.findViewWithTag<TextView>("path_value") ?: return
+			pathView.text = photoPath
+
+			// 2. Atualiza o preview visual
+			val imageView = viewContainer.findViewWithTag<ImageView>("preview_image") ?: return
+			imageView.visibility = View.VISIBLE
+			
+			// 3. Atualiza o texto do botão
+			// O botão não tem tag, mas podemos encontrá-lo se for o único botão no layout
+			if (viewContainer is ViewGroup) {
+				for (i in 0 until viewContainer.childCount) {
+					val child = viewContainer.getChildAt(i)
+					if (child is Button) {
+						child.text = "Alterar Foto"
+						break
+					}
+				}
+			}
+
+			// 4. Carrega o bitmap de forma assíncrona
+			if (context is androidx.lifecycle.LifecycleOwner) {
+				context.lifecycleScope.launch(Dispatchers.IO) {
+					try {
+						val options = BitmapFactory.Options().apply { inSampleSize = 4 }
+						val bitmap = BitmapFactory.decodeFile(photoPath, options)
+						withContext(Dispatchers.Main) {
+							imageView.setImageBitmap(bitmap)
+						}
+					} catch (e: Exception) { }
+				}
+			}
+		}
+	}
 }

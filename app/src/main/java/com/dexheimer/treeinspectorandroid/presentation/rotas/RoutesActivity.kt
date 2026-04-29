@@ -37,6 +37,9 @@ class RoutesActivity : AppCompatActivity() {
 
         setupUI()
         setupObservers()
+
+        // Sincronização automática ao abrir (Melhoria offline-first)
+        viewModel.forcarSincronizacaoCompleta()
     }
 
     private fun setupUI() {

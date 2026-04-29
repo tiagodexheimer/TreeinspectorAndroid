@@ -92,6 +92,7 @@ dependencies {
 
 	// --- UI Utils ---
 	implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
+	implementation("id.zelory:compressor:3.0.1")
 
 	// --- Testes ---
 	testImplementation(libs.junit)

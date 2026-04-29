@@ -48,7 +48,7 @@ class SalvarVistoriaUseCase @Inject constructor(
 				vistoriaDao.adicionarFila(vistoriaPendente)
 			}
 			
-			demandaDao.updateStatus(demandaId, "Concluída")
+			demandaDao.updateStatus(demandaId, "Concluído")
 
 			// 4. Agenda o Worker para rodar assim que tiver internet
 			agendarSincronizacao()
@@ -68,8 +68,18 @@ class SalvarVistoriaUseCase @Inject constructor(
 
 		val syncRequest = OneTimeWorkRequestBuilder<com.dexheimer.treeinspectorandroid.data.worker.SyncVistoriasWorker>()
 			.setConstraints(constraints)
+			.setBackoffCriteria(
+				androidx.work.BackoffPolicy.EXPONENTIAL,
+				androidx.work.WorkRequest.MIN_BACKOFF_MILLIS,
+				java.util.concurrent.TimeUnit.MILLISECONDS
+			)
+			.addTag("SYNC_VISTORIAS")
 			.build()
 
-		workManager.enqueue(syncRequest)
+		workManager.enqueueUniqueWork(
+			"SYNC_VISTORIAS_TASK",
+			androidx.work.ExistingWorkPolicy.REPLACE,
+			syncRequest
+		)
 	}
 }
