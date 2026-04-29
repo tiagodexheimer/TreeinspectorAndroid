@@ -21,6 +21,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import android.content.Intent
+import com.dexheimer.treeinspectorandroid.presentation.vistoria.VisualizadorImagemActivity
 
 class MultiPhotoRenderer : FormFieldRenderer {
 
@@ -156,6 +158,12 @@ class MultiPhotoRenderer : FormFieldRenderer {
 				background = context.getDrawable(android.R.drawable.screen_background_light_transparent)
 			}
 			photosContainer.addView(imageView)
+
+			imageView.setOnClickListener {
+				val intent = Intent(context, VisualizadorImagemActivity::class.java)
+				intent.putExtra("IMAGE_PATH", photoPath)
+				context.startActivity(intent)
+			}
 
 			if (context is VistoriaActivity) {
 				context.carregarImagemNoImageView(photoPath, imageView)

@@ -495,6 +495,11 @@ class VistoriaActivity : AppCompatActivity() {
                             LinearLayout.LayoutParams(250, 250).apply { setMargins(0, 0, 16, 0) }
                     scaleType = ImageView.ScaleType.CENTER_CROP
                     background = ContextCompat.getDrawable(context, R.drawable.ic_launcher_background)
+                    setOnClickListener {
+                        val intent = Intent(this@VistoriaActivity, VisualizadorImagemActivity::class.java)
+                        intent.putExtra("IMAGE_PATH", path)
+                        startActivity(intent)
+                    }
                 }
         containerFotosEstaticas.addView(imageView)
         carregarImagemNoImageView(path, imageView)

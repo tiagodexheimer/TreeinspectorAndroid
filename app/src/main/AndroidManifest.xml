@@ -80,6 +80,11 @@
             android:label="Realizar Vistoria"
             android:exported="false" />
 
+        <activity
+            android:name=".presentation.vistoria.VisualizadorImagemActivity"
+            android:theme="@style/Theme.AppCompat.NoActionBar"
+            android:exported="false" />
+
     </application>
 
 </manifest>

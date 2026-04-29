@@ -17,6 +17,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import android.content.Intent
+import com.dexheimer.treeinspectorandroid.presentation.vistoria.VisualizadorImagemActivity
 
 class PhotoRenderer : FormFieldRenderer {
 
@@ -73,6 +75,12 @@ class PhotoRenderer : FormFieldRenderer {
 			imageView.visibility = View.VISIBLE
 			button.text = "Alterar Foto"
 
+			imageView.setOnClickListener {
+				val intent = Intent(context, VisualizadorImagemActivity::class.java)
+				intent.putExtra("IMAGE_PATH", initialValue)
+				context.startActivity(intent)
+			}
+
 			if (context is VistoriaActivity) {
 				context.carregarImagemNoImageView(initialValue, imageView)
 			}
@@ -115,6 +123,13 @@ class PhotoRenderer : FormFieldRenderer {
 						break
 					}
 				}
+			}
+
+			// 3. Clique para zoom
+			imageView.setOnClickListener {
+				val intent = Intent(context, VisualizadorImagemActivity::class.java)
+				intent.putExtra("IMAGE_PATH", photoPath)
+				context.startActivity(intent)
 			}
 
 			// 4. Carrega o bitmap de forma assíncrona
