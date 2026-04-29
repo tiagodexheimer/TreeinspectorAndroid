@@ -157,25 +157,10 @@ class MultiPhotoRenderer : FormFieldRenderer {
 			}
 			photosContainer.addView(imageView)
 
-			// 3. Load Bitmap asynchronously to avoid ANR
-			if (context is androidx.lifecycle.LifecycleOwner) {
-				context.lifecycleScope.launch(Dispatchers.IO) {
-					try {
-						// Decode with sample size to reduce memory usage
-						val options = BitmapFactory.Options().apply { inSampleSize = 4 }
-						val bitmap = BitmapFactory.decodeFile(photoPath, options)
-						withContext(Dispatchers.Main) {
-							imageView.setImageBitmap(bitmap)
-						}
-					} catch (e: Exception) {
-						withContext(Dispatchers.Main) {
-							imageView.setBackgroundColor(Color.LTGRAY)
-						}
-					}
-				}
+			if (context is VistoriaActivity) {
+				context.carregarImagemNoImageView(photoPath, imageView)
 			} else {
-				// Fallback if not LifecycleOwner (should not happen in Activity)
-				// Just load safely-ish
+				// Fallback básico se não for VistoriaActivity
 				try {
 					val options = BitmapFactory.Options().apply { inSampleSize = 8 }
 					val bitmap = BitmapFactory.decodeFile(photoPath, options)

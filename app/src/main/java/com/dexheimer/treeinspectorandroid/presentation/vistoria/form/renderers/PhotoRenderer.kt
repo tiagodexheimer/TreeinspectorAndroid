@@ -73,16 +73,8 @@ class PhotoRenderer : FormFieldRenderer {
 			imageView.visibility = View.VISIBLE
 			button.text = "Alterar Foto"
 
-			if (context is androidx.lifecycle.LifecycleOwner) {
-				context.lifecycleScope.launch(Dispatchers.IO) {
-					try {
-						val options = BitmapFactory.Options().apply { inSampleSize = 4 }
-						val bitmap = BitmapFactory.decodeFile(initialValue, options)
-						withContext(Dispatchers.Main) {
-							imageView.setImageBitmap(bitmap)
-						}
-					} catch (e: Exception) { }
-				}
+			if (context is VistoriaActivity) {
+				context.carregarImagemNoImageView(initialValue, imageView)
 			}
 		}
 
@@ -126,16 +118,8 @@ class PhotoRenderer : FormFieldRenderer {
 			}
 
 			// 4. Carrega o bitmap de forma assíncrona
-			if (context is androidx.lifecycle.LifecycleOwner) {
-				context.lifecycleScope.launch(Dispatchers.IO) {
-					try {
-						val options = BitmapFactory.Options().apply { inSampleSize = 4 }
-						val bitmap = BitmapFactory.decodeFile(photoPath, options)
-						withContext(Dispatchers.Main) {
-							imageView.setImageBitmap(bitmap)
-						}
-					} catch (e: Exception) { }
-				}
+			if (context is VistoriaActivity) {
+				context.carregarImagemNoImageView(photoPath, imageView)
 			}
 		}
 	}

@@ -169,12 +169,23 @@ constructor(
 
             val compressedFile = Compressor.compress(context, originalFile) {
                 resolution(1600, 1600)
-                quality(75)
-                format(Bitmap.CompressFormat.WEBP)
+                quality(60)
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                    format(Bitmap.CompressFormat.WEBP_LOSSY)
+                } else {
+                    @Suppress("DEPRECATION")
+                    format(Bitmap.CompressFormat.WEBP)
+                }
             }
 
             val finalFile = File(originalFile.parent, originalFile.name.substringBeforeLast(".") + "_emergency.webp")
             compressedFile.copyTo(finalFile, overwrite = true)
+            
+            Log.i("Sync", "Compressão WebP: Original=${originalFile.length() / 1024}KB, Novo=${finalFile.length() / 1024}KB")
+            
+            // Se por algum erro bizarro o WebP ficar maior, e já for pequeno, poderíamos manter o original.
+            // Mas para o servidor, padronizar em WebP é melhor.
+            
             compressedFile.delete()
             
             if (originalFile.exists()) originalFile.delete()

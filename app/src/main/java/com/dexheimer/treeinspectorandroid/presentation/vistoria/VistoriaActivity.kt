@@ -390,11 +390,16 @@ class VistoriaActivity : AppCompatActivity() {
                 
                 // --- Compressão da Imagem ---
                 val originalFile = File(path)
-                val compressedFile = Compressor.compress(this@VistoriaActivity, originalFile) {
-                    resolution(1600, 1600)
-                    quality(75)
+                Log.d("VistoriaActivity", "Iniciando compressão: ${originalFile.length() / 1024}KB")
+                
+                val compressedFile = Compressor.compress(applicationContext, originalFile) {
+                    resolution(1200, 1200) // 1200px é mais leve para o emulador
+                    quality(60)
+                    // Simplificado para evitar bugs de codec em emuladores
+                    @Suppress("DEPRECATION")
                     format(Bitmap.CompressFormat.WEBP)
                 }
+                Log.i("VistoriaActivity", "Compressão concluída: Novo tamanho=${compressedFile.length() / 1024}KB")
 
                 // Move para o diretório final com a extensão correta (.webp)
                 // Usamos o mesmo diretório do original para garantir persistência
@@ -489,13 +494,58 @@ class VistoriaActivity : AppCompatActivity() {
                     layoutParams =
                             LinearLayout.LayoutParams(250, 250).apply { setMargins(0, 0, 16, 0) }
                     scaleType = ImageView.ScaleType.CENTER_CROP
-                    val bmOptions = BitmapFactory.Options().apply { inSampleSize = 4 }
-                    val bitmap = BitmapFactory.decodeFile(path, bmOptions)
-                    setImageBitmap(bitmap)
-                    background =
-                            ContextCompat.getDrawable(context, R.drawable.ic_launcher_background)
+                    background = ContextCompat.getDrawable(context, R.drawable.ic_launcher_background)
                 }
         containerFotosEstaticas.addView(imageView)
+        carregarImagemNoImageView(path, imageView)
+    }
+
+    /**
+     * Método centralizado para carregar imagens de forma segura.
+     * Suporta: Arquivos Locais (JPG/WebP), Fallback de extensão e URLs remotas.
+     */
+    fun carregarImagemNoImageView(path: String, imageView: ImageView) {
+        if (path.isEmpty()) return
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                var finalPath = path
+                val file = File(path)
+
+                // 1. Caso seja arquivo local mas não exista (talvez mudou de .jpg para .webp)
+                if (path.startsWith("/") && !file.exists()) {
+                    val webpPath = path.substringBeforeLast(".") + ".webp"
+                    if (File(webpPath).exists()) finalPath = webpPath
+                }
+
+                // 2. Carregamento
+                val bitmap = if (finalPath.startsWith("http")) {
+                    // Download simples de URL
+                    val connection = java.net.URL(finalPath).openConnection()
+                    connection.doInput = true
+                    connection.connect()
+                    val input = connection.getInputStream()
+                    BitmapFactory.decodeStream(input)
+                } else {
+                    // Arquivo Local
+                    val bmOptions = BitmapFactory.Options().apply { inSampleSize = 4 }
+                    BitmapFactory.decodeFile(finalPath, bmOptions)
+                }
+
+                withContext(Dispatchers.Main) {
+                    if (bitmap != null) {
+                        imageView.setImageBitmap(bitmap)
+                    } else {
+                        imageView.setImageResource(android.R.drawable.ic_menu_report_image)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("VistoriaActivity", "Erro ao carregar imagem: $path", e)
+                withContext(Dispatchers.Main) {
+                    imageView.setImageResource(android.R.drawable.ic_menu_close_clear_cancel)
+                }
+            }
+        }
     }
 
     fun solicitarFoto(fieldName: String) {
