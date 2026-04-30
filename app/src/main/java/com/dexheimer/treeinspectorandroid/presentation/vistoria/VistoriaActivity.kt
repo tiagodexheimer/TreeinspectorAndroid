@@ -13,6 +13,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.os.Looper
 import android.provider.Settings
 import android.util.Log
 import android.view.View
@@ -22,6 +23,7 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
+import com.google.android.gms.location.*
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
@@ -37,6 +39,7 @@ import com.dexheimer.treeinspectorandroid.R
 import com.dexheimer.treeinspectorandroid.core.util.ImageWatermarkUtils
 import com.dexheimer.treeinspectorandroid.data.remote.FormField
 import com.dexheimer.treeinspectorandroid.domain.model.Demanda
+import com.dexheimer.treeinspectorandroid.domain.repository.DemandaRepository
 import com.dexheimer.treeinspectorandroid.domain.usecase.SaveResult
 import com.dexheimer.treeinspectorandroid.presentation.vistoria.form.FormRendererFactory
 import com.dexheimer.treeinspectorandroid.presentation.vistoria.form.renderers.MultiPhotoRenderer
@@ -51,11 +54,18 @@ import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import id.zelory.compressor.Compressor
+import id.zelory.compressor.constraint.format
+import id.zelory.compressor.constraint.quality
+import id.zelory.compressor.constraint.resolution
+import android.graphics.Bitmap
+import com.dexheimer.treeinspectorandroid.presentation.vistoria.form.renderers.PhotoRenderer
 
 @AndroidEntryPoint
 class VistoriaActivity : AppCompatActivity() {
 
     @Inject lateinit var rendererFactory: FormRendererFactory
+    @Inject lateinit var demandaRepository: DemandaRepository
 
     private val viewModel: VistoriaViewModel by viewModels()
 
@@ -79,9 +89,14 @@ class VistoriaActivity : AppCompatActivity() {
     private val formViews = mutableMapOf<String, View>()
     private var fieldDefinitions = emptyList<FormField>()
     private val fotosEstaticasFilePaths = mutableListOf<String>()
-    private var lastDraft: Map<String, Any>? = null
+    
+    // GPS Ativo
+    private lateinit var fusedLocationClient: FusedLocationProviderClient
+    private lateinit var locationCallback: LocationCallback
+    private var isMonitoringLocation = false
 
     private var isSaving = false
+    private var lastDraft: Map<String, Any>? = null
 
     // --- Controle de Imagens, GPS e Permissões ---
     private var currentPhotoField: String? = null
@@ -144,6 +159,7 @@ class VistoriaActivity : AppCompatActivity() {
 
         setupUI()
         setupToolbar()
+        setupLocationClient()
 
         savedInstanceState?.let { bundle ->
             currentPhotoField = bundle.getString(STATE_PHOTO_FIELD)
@@ -172,6 +188,7 @@ class VistoriaActivity : AppCompatActivity() {
 
         if (demandaAtual != null) {
             preencherCabecalho()
+            buscarNotificacoes()
             viewModel.carregarRascunho(demandaAtual!!.id)
             demandaAtual?.tipoDemanda?.let { viewModel.buscarFormulario(it) }
         } else if (extraId != -1) {
@@ -198,6 +215,14 @@ class VistoriaActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         salvarRascunhoLocal()
+        stopLocationUpdates()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            startLocationUpdates()
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -378,10 +403,39 @@ class VistoriaActivity : AppCompatActivity() {
 
                 val textoFinal = "$dateStr\n$gpsStr$addressStr"
                 val sucesso = ImageWatermarkUtils.waterMarkImage(path, textoFinal)
+                
+                // --- Compressão da Imagem ---
+                val originalFile = File(path)
+                Log.d("VistoriaActivity", "Iniciando compressão: ${originalFile.length() / 1024}KB")
+                
+                val compressedFile = Compressor.compress(applicationContext, originalFile) {
+                    resolution(1200, 1200) // 1200px é mais leve para o emulador
+                    quality(60)
+                    // Simplificado para evitar bugs de codec em emuladores
+                    @Suppress("DEPRECATION")
+                    format(Bitmap.CompressFormat.WEBP)
+                }
+                Log.i("VistoriaActivity", "Compressão concluída: Novo tamanho=${compressedFile.length() / 1024}KB")
+
+                // Move para o diretório final com a extensão correta (.webp)
+                // Usamos o mesmo diretório do original para garantir persistência
+                val finalFileName = originalFile.name.substringBeforeLast(".") + ".webp"
+                val finalFile = File(originalFile.parent, finalFileName)
+                
+                // Se o arquivo comprimido for diferente do destino final, movemos ele
+                if (compressedFile.absolutePath != finalFile.absolutePath) {
+                    compressedFile.copyTo(finalFile, overwrite = true)
+                    compressedFile.delete()
+                }
+
+                // Deleta o original se for diferente do arquivo final (evita deletar o próprio WebP se já for)
+                if (originalFile.exists() && originalFile.absolutePath != finalFile.absolutePath) {
+                    originalFile.delete()
+                }
 
                 withContext(Dispatchers.Main) {
                     if (!sucesso) Log.w("VistoriaActivity", "Falha ao gravar marca d'água")
-                    adicionarFotoNaTela(currentPhotoField ?: "", path)
+                    adicionarFotoNaTela(currentPhotoField ?: "", finalFile.absolutePath)
                 }
             } catch (e: Exception) {
                 Log.e("VistoriaActivity", "Erro ao processar foto: ${e.message}", e)
@@ -439,7 +493,14 @@ class VistoriaActivity : AppCompatActivity() {
             adicionarFotoViewEstatica(path)
         } else {
             val viewContainer = formViews[fieldName]
-            viewContainer?.let { MultiPhotoRenderer.addPhotoToView(it, path) }
+            if (viewContainer != null) {
+                // Tenta atualizar como MultiPhoto ou Single Photo
+                if (viewContainer.findViewWithTag<View>("photos_container") != null) {
+                    MultiPhotoRenderer.addPhotoToView(viewContainer, path)
+                } else if (viewContainer.findViewWithTag<View>("path_value") != null) {
+                    PhotoRenderer.updatePhoto(viewContainer, path)
+                }
+            }
         }
     }
 
@@ -449,13 +510,63 @@ class VistoriaActivity : AppCompatActivity() {
                     layoutParams =
                             LinearLayout.LayoutParams(250, 250).apply { setMargins(0, 0, 16, 0) }
                     scaleType = ImageView.ScaleType.CENTER_CROP
-                    val bmOptions = BitmapFactory.Options().apply { inSampleSize = 4 }
-                    val bitmap = BitmapFactory.decodeFile(path, bmOptions)
-                    setImageBitmap(bitmap)
-                    background =
-                            ContextCompat.getDrawable(context, R.drawable.ic_launcher_background)
+                    background = ContextCompat.getDrawable(context, R.drawable.ic_launcher_background)
+                    setOnClickListener {
+                        val intent = Intent(this@VistoriaActivity, VisualizadorImagemActivity::class.java)
+                        intent.putExtra("IMAGE_PATH", path)
+                        startActivity(intent)
+                    }
                 }
         containerFotosEstaticas.addView(imageView)
+        carregarImagemNoImageView(path, imageView)
+    }
+
+    /**
+     * Método centralizado para carregar imagens de forma segura.
+     * Suporta: Arquivos Locais (JPG/WebP), Fallback de extensão e URLs remotas.
+     */
+    fun carregarImagemNoImageView(path: String, imageView: ImageView) {
+        if (path.isEmpty()) return
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                var finalPath = path
+                val file = File(path)
+
+                // 1. Caso seja arquivo local mas não exista (talvez mudou de .jpg para .webp)
+                if (path.startsWith("/") && !file.exists()) {
+                    val webpPath = path.substringBeforeLast(".") + ".webp"
+                    if (File(webpPath).exists()) finalPath = webpPath
+                }
+
+                // 2. Carregamento
+                val bitmap = if (finalPath.startsWith("http")) {
+                    // Download simples de URL
+                    val connection = java.net.URL(finalPath).openConnection()
+                    connection.doInput = true
+                    connection.connect()
+                    val input = connection.getInputStream()
+                    BitmapFactory.decodeStream(input)
+                } else {
+                    // Arquivo Local
+                    val bmOptions = BitmapFactory.Options().apply { inSampleSize = 4 }
+                    BitmapFactory.decodeFile(finalPath, bmOptions)
+                }
+
+                withContext(Dispatchers.Main) {
+                    if (bitmap != null) {
+                        imageView.setImageBitmap(bitmap)
+                    } else {
+                        imageView.setImageResource(android.R.drawable.ic_menu_report_image)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("VistoriaActivity", "Erro ao carregar imagem: $path", e)
+                withContext(Dispatchers.Main) {
+                    imageView.setImageResource(android.R.drawable.ic_menu_close_clear_cancel)
+                }
+            }
+        }
     }
 
     fun solicitarFoto(fieldName: String) {
@@ -487,11 +598,8 @@ class VistoriaActivity : AppCompatActivity() {
 
     private fun abrirCameraSegura(fieldName: String, hasLocationPermission: Boolean) {
         currentPhotoField = fieldName
-        if (hasLocationPermission) {
-            val loc = obterLocalizacaoRapida()
-            if (loc != null) capturedLocation = loc
-        }
-
+        // capturedLocation já estará atualizado pelo monitoramento contínuo
+        
         val photoFile = criarArquivoImagem()
         if (photoFile != null) {
             currentPhotoPath = photoFile.absolutePath
@@ -507,21 +615,46 @@ class VistoriaActivity : AppCompatActivity() {
         }
     }
 
-    private fun obterLocalizacaoRapida(): Location? {
-        val locManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        return try {
-            if (ActivityCompat.checkSelfPermission(
-                            this,
-                            Manifest.permission.ACCESS_FINE_LOCATION
-                    ) == PackageManager.PERMISSION_GRANTED
-            ) {
-                val gps = locManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-                val net = locManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
-                gps ?: net
-            } else null
-        } catch (e: Exception) {
-            null
+    private fun setupLocationClient() {
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+        
+        locationCallback = object : LocationCallback() {
+            override fun onLocationResult(locationResult: LocationResult) {
+                locationResult.lastLocation?.let { location ->
+                    capturedLocation = location
+                    Log.d("GPS", "Localização atualizada: ${location.latitude}, ${location.longitude}")
+                }
+            }
         }
+    }
+
+    private fun startLocationUpdates() {
+        if (isMonitoringLocation) return
+        
+        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 5000) // 5 segundos
+            .setWaitForAccurateLocation(false)
+            .setMinUpdateIntervalMillis(2000)
+            .build()
+
+        try {
+            fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper())
+            isMonitoringLocation = true
+            Log.i("GPS", "Monitoramento de GPS iniciado.")
+        } catch (e: SecurityException) {
+            Log.e("GPS", "Erro ao iniciar GPS: ${e.message}")
+        }
+    }
+
+    private fun stopLocationUpdates() {
+        if (!isMonitoringLocation) return
+        fusedLocationClient.removeLocationUpdates(locationCallback)
+        isMonitoringLocation = false
+        Log.i("GPS", "Monitoramento de GPS parado.")
+    }
+
+    private fun obterLocalizacaoRapida(): Location? {
+        // Agora mantemos este método apenas como fallback, mas o monitoramento ativo é a prioridade.
+        return capturedLocation
     }
 
     private fun criarArquivoImagem(): File? {
@@ -575,7 +708,7 @@ class VistoriaActivity : AppCompatActivity() {
         when (result) {
             is SaveResult.Success -> {
                 // Mensagem de sucesso (Offline First)
-                finalizarComSucesso("Vistoria salva! Sincronizando...", "concluido_pendente")
+                finalizarComSucesso("Vistoria salva! Sincronizando...", "Concluído")
             }
             is SaveResult.Failure -> {
                 showLoading(false)
@@ -652,6 +785,64 @@ class VistoriaActivity : AppCompatActivity() {
                                                 .apply { setMargins(0, 0, 0, 8) }
                             }
             containerAnexosExistentes.addView(btn)
+        }
+    }
+
+    private fun buscarNotificacoes() {
+        val demanda = demandaAtual ?: return
+
+        lifecycleScope.launch {
+            try {
+                val notificacoes = demandaRepository.getNotificacoesByDemanda(demanda.id)
+                notificacoes.forEach { notificacao ->
+                    notificacao.fotos?.forEach { anexo ->
+                        sectionAnexosExistentes.visibility = View.VISIBLE
+                        val btn =
+                                Button(
+                                                this@VistoriaActivity,
+                                                null,
+                                                com.google
+                                                        .android
+                                                        .material
+                                                        .R
+                                                        .style
+                                                        .Widget_MaterialComponents_Button_OutlinedButton
+                                        )
+                                        .apply {
+                                            text = "📋 [Notif] ${anexo.nome}"
+                                            isAllCaps = false
+                                            setOnClickListener {
+                                                try {
+                                                    val intent =
+                                                            Intent(
+                                                                    Intent.ACTION_VIEW,
+                                                                    Uri.parse(anexo.url)
+                                                            )
+                                                    startActivity(intent)
+                                                } catch (e: Exception) {
+                                                    Toast.makeText(
+                                                                    context,
+                                                                    "Não foi possível abrir o anexo.",
+                                                                    Toast.LENGTH_SHORT
+                                                            )
+                                                            .show()
+                                                }
+                                            }
+                                            layoutParams =
+                                                    LinearLayout.LayoutParams(
+                                                                    LinearLayout.LayoutParams
+                                                                            .MATCH_PARENT,
+                                                                    LinearLayout.LayoutParams
+                                                                            .WRAP_CONTENT
+                                                            )
+                                                            .apply { setMargins(0, 0, 0, 8) }
+                                        }
+                        containerAnexosExistentes.addView(btn)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("VistoriaActivity", "Erro ao buscar notificações", e)
+            }
         }
     }
 }

@@ -65,8 +65,24 @@
             android:exported="false" />
 
         <activity
+            android:name=".presentation.demandas.DemandaDetalheActivity"
+            android:label="Detalhes da Demanda"
+            android:exported="false" />
+
+        <activity
+            android:name=".presentation.demandas.CriarDemandaActivity"
+            android:label="Nova Demanda"
+            android:windowSoftInputMode="adjustResize"
+            android:exported="false" />
+
+        <activity
             android:name=".presentation.vistoria.VistoriaActivity"
             android:label="Realizar Vistoria"
+            android:exported="false" />
+
+        <activity
+            android:name=".presentation.vistoria.VisualizadorImagemActivity"
+            android:theme="@style/Theme.AppCompat.NoActionBar"
             android:exported="false" />
 
     </application>

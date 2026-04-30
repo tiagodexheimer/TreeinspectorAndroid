@@ -21,6 +21,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import android.content.Intent
+import com.dexheimer.treeinspectorandroid.presentation.vistoria.VisualizadorImagemActivity
 
 class MultiPhotoRenderer : FormFieldRenderer {
 
@@ -157,25 +159,16 @@ class MultiPhotoRenderer : FormFieldRenderer {
 			}
 			photosContainer.addView(imageView)
 
-			// 3. Load Bitmap asynchronously to avoid ANR
-			if (context is androidx.lifecycle.LifecycleOwner) {
-				context.lifecycleScope.launch(Dispatchers.IO) {
-					try {
-						// Decode with sample size to reduce memory usage
-						val options = BitmapFactory.Options().apply { inSampleSize = 4 }
-						val bitmap = BitmapFactory.decodeFile(photoPath, options)
-						withContext(Dispatchers.Main) {
-							imageView.setImageBitmap(bitmap)
-						}
-					} catch (e: Exception) {
-						withContext(Dispatchers.Main) {
-							imageView.setBackgroundColor(Color.LTGRAY)
-						}
-					}
-				}
+			imageView.setOnClickListener {
+				val intent = Intent(context, VisualizadorImagemActivity::class.java)
+				intent.putExtra("IMAGE_PATH", photoPath)
+				context.startActivity(intent)
+			}
+
+			if (context is VistoriaActivity) {
+				context.carregarImagemNoImageView(photoPath, imageView)
 			} else {
-				// Fallback if not LifecycleOwner (should not happen in Activity)
-				// Just load safely-ish
+				// Fallback básico se não for VistoriaActivity
 				try {
 					val options = BitmapFactory.Options().apply { inSampleSize = 8 }
 					val bitmap = BitmapFactory.decodeFile(photoPath, options)

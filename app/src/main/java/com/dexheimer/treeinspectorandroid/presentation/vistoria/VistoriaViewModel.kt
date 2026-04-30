@@ -43,6 +43,8 @@ class VistoriaViewModel @Inject constructor(
 	val uiState: StateFlow<VistoriaUiState> = _uiState.asStateFlow()
 
 	fun buscarFormulario(tipoDemanda: String) {
+		val tipoNormalizado = tipoDemanda.trim()
+		Log.d("VistoriaViewModel", "Buscando formulário para tipo: '$tipoNormalizado'")
 		_uiState.value = _uiState.value.copy(isLoading = true)
 
 		viewModelScope.launch {
@@ -50,25 +52,31 @@ class VistoriaViewModel @Inject constructor(
 
 			// 1. Tenta API
 			try {
-				val response = apiService.getFormularioPorTipo(tipoDemanda)
+				val response = apiService.getFormularioPorTipo(tipoNormalizado)
 				if (response.isSuccessful && response.body() != null) {
 					campos = response.body()
-					salvarFormularioNoCache(tipoDemanda, campos!!)
+					Log.i("VistoriaViewModel", "Formulário carregado via API para $tipoNormalizado")
+					salvarFormularioNoCache(tipoNormalizado, campos!!)
+				} else {
+					Log.w("VistoriaViewModel", "Falha API para $tipoNormalizado: ${response.code()}")
 				}
 			} catch (e: Exception) {
-				// Falha de rede.
+				Log.e("VistoriaViewModel", "Falha de rede para $tipoNormalizado: ${e.message}")
 			}
 
 			// 2. Tenta Cache Local
 			if (campos == null) {
-				val jsonCache = formularioDao.getFormularioJson(tipoDemanda)
+				val jsonCache = formularioDao.getFormularioJson(tipoNormalizado)
 				if (jsonCache != null) {
 					try {
 						val listType = object : TypeToken<List<FormField>>() {}.type
 						campos = Gson().fromJson(jsonCache, listType)
+						Log.i("VistoriaViewModel", "Formulário carregado via Cache para $tipoNormalizado")
 					} catch (e: Exception) {
-						// Erro ao ler cache.
+						Log.e("VistoriaViewModel", "Erro ao ler cache para $tipoNormalizado", e)
 					}
+				} else {
+					Log.w("VistoriaViewModel", "Sem cache local para $tipoNormalizado")
 				}
 			}
 
@@ -144,6 +152,7 @@ class VistoriaViewModel @Inject constructor(
 	}
 
 	fun salvarRascunho(demandaId: Int, respostas: Map<String, Any>) {
+		// O rascunho agora persiste caminhos de imagens já comprimidas e convertidas para WebP
 		viewModelScope.launch(Dispatchers.IO) {
 			try {
 				val jsonRespostas = Gson().toJson(respostas)

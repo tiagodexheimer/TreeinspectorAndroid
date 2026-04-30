@@ -86,6 +86,15 @@
             android:text="Ver Todas as Demandas da Rota"
             app:icon="@android:drawable/ic_menu_agenda" />
 
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnCriarDemandaCampo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Nova Demanda em Campo"
+            android:backgroundTint="@color/tree_green_primary"
+            app:icon="@android:drawable/ic_input_add" />
+
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

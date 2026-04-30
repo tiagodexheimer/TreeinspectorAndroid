@@ -10,7 +10,7 @@ import androidx.room.Transaction
 interface FormularioDao {
 
 	// Busca o JSON usando o nome correto da coluna 'tipoDemanda' e 'jsonEstrutura'
-	@Query("SELECT jsonEstrutura FROM formularios_cache WHERE tipoDemanda = :tipo")
+	@Query("SELECT jsonEstrutura FROM formularios_cache WHERE LOWER(tipoDemanda) = LOWER(:tipo)")
 	suspend fun getFormularioJson(tipo: String): String?
 
 	// Insere o objeto FormularioCache

@@ -14,8 +14,8 @@ android {
 		applicationId = "com.dexheimer.treeinspectorandroid"
 		minSdk = 24
 		targetSdk = 36
-		versionCode = 11
-		versionName = "1.1"
+		versionCode = 15
+		versionName = "1.5.0"
 
 		testInstrumentationRunner = "com.dexheimer.treeinspectorandroid.CustomTestRunner"
 	}
@@ -92,6 +92,7 @@ dependencies {
 
 	// --- UI Utils ---
 	implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
+	implementation("id.zelory:compressor:3.0.1")
 
 	// --- Testes ---
 	testImplementation(libs.junit)

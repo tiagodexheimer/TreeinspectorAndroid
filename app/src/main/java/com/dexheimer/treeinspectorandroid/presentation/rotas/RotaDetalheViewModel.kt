@@ -7,6 +7,7 @@ import com.dexheimer.treeinspectorandroid.domain.model.Demanda
 import com.dexheimer.treeinspectorandroid.domain.model.Rota
 import com.dexheimer.treeinspectorandroid.domain.repository.DemandaRepository
 import com.dexheimer.treeinspectorandroid.domain.repository.RotaRepository
+import com.dexheimer.treeinspectorandroid.domain.usecase.SyncVistoriasUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -29,6 +30,7 @@ data class RotaDetalheUiState(
 class RotaDetalheViewModel @Inject constructor(
 	private val rotaRepository: RotaRepository,
 	private val demandaRepository: DemandaRepository,
+	private val syncVistoriasUseCase: SyncVistoriasUseCase,
 	savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -40,8 +42,26 @@ class RotaDetalheViewModel @Inject constructor(
 	init {
 		if (rotaId != -1) {
 			carregarDados()
+			sincronizar() // Auto-sync ao abrir a rota
 		} else {
 			_uiState.value = _uiState.value.copy(error = "ID da Rota inválido")
+		}
+	}
+
+	fun sincronizar() {
+		viewModelScope.launch {
+			_uiState.value = _uiState.value.copy(isSyncing = true)
+			
+			// 1. Envia vistorias pendentes
+			syncVistoriasUseCase()
+			
+			// 2. Atualiza dados da rota
+			val result = rotaRepository.getRotaDetalhes(rotaId)
+			result.onSuccess { pair ->
+				atualizarListas(pair.first, pair.second)
+			}
+			
+			_uiState.value = _uiState.value.copy(isSyncing = false)
 		}
 	}
 
