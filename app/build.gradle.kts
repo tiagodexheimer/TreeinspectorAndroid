@@ -14,8 +14,8 @@ android {
 		applicationId = "com.dexheimer.treeinspectorandroid"
 		minSdk = 24
 		targetSdk = 36
-		versionCode = 13
-		versionName = "1.3"
+		versionCode = 15
+		versionName = "1.5.0"
 
 		testInstrumentationRunner = "com.dexheimer.treeinspectorandroid.CustomTestRunner"
 	}
