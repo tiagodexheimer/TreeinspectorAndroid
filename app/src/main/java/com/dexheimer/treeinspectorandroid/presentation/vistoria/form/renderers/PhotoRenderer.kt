@@ -52,9 +52,25 @@ class PhotoRenderer : FormFieldRenderer {
 			tag = "preview_image" // Tag para encontrar depois
 		}
 
+		// TextView oculto para guardar o caminho do arquivo (Path)
+		val pathView = TextView(context).apply {
+			visibility = View.GONE
+			tag = "path_value" // Tag para coleta de resposta
+		}
+
+		// Layout para botões (Tirar/Alterar + Limpar)
+		val buttonLayout = LinearLayout(context).apply {
+			orientation = LinearLayout.HORIZONTAL
+			layoutParams = LinearLayout.LayoutParams(
+				LinearLayout.LayoutParams.MATCH_PARENT,
+				LinearLayout.LayoutParams.WRAP_CONTENT
+			)
+		}
+
 		// Botão de Captura
 		val button = Button(context).apply {
 			text = "Tirar Foto"
+			layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
 			setOnClickListener {
 				if (context is VistoriaActivity) {
 					// Chama o método na Activity passando o nome do campo
@@ -63,17 +79,31 @@ class PhotoRenderer : FormFieldRenderer {
 			}
 		}
 
-		// TextView oculto para guardar o caminho do arquivo (Path)
-		val pathView = TextView(context).apply {
+		// Botão de Limpar
+		val btnClear = Button(context).apply {
+			text = "Limpar"
+			tag = "btn_clear"
 			visibility = View.GONE
-			tag = "path_value" // Tag para coleta de resposta
+			layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+				marginStart = 8
+			}
+			setOnClickListener {
+				pathView.text = ""
+				imageView.visibility = View.GONE
+				button.text = "Tirar Foto"
+				visibility = View.GONE
+			}
 		}
+
+		buttonLayout.addView(button)
+		buttonLayout.addView(btnClear)
 
 		// Restore state
 		if (initialValue is String && initialValue.isNotEmpty()) {
 			pathView.text = initialValue
 			imageView.visibility = View.VISIBLE
 			button.text = "Alterar Foto"
+			btnClear.visibility = View.VISIBLE
 
 			imageView.setOnClickListener {
 				val intent = Intent(context, VisualizadorImagemActivity::class.java)
@@ -88,7 +118,7 @@ class PhotoRenderer : FormFieldRenderer {
 
 		layout.addView(label)
 		layout.addView(imageView)
-		layout.addView(button)
+		layout.addView(buttonLayout)
 		layout.addView(pathView)
 
 		container.addView(layout)
@@ -113,19 +143,26 @@ class PhotoRenderer : FormFieldRenderer {
 			val imageView = viewContainer.findViewWithTag<ImageView>("preview_image") ?: return
 			imageView.visibility = View.VISIBLE
 			
-			// 3. Atualiza o texto do botão
-			// O botão não tem tag, mas podemos encontrá-lo se for o único botão no layout
+			// 3. Atualiza os botões
 			if (viewContainer is ViewGroup) {
 				for (i in 0 until viewContainer.childCount) {
-					val child = viewContainer.getChildAt(i)
-					if (child is Button) {
-						child.text = "Alterar Foto"
-						break
+					val row = viewContainer.getChildAt(i)
+					if (row is ViewGroup) {
+						for (j in 0 until row.childCount) {
+							val child = row.getChildAt(j)
+							if (child is Button) {
+								if (child.tag == "btn_clear") {
+									child.visibility = View.VISIBLE
+								} else {
+									child.text = "Alterar Foto"
+								}
+							}
+						}
 					}
 				}
 			}
 
-			// 3. Clique para zoom
+			// 4. Clique para zoom
 			imageView.setOnClickListener {
 				val intent = Intent(context, VisualizadorImagemActivity::class.java)
 				intent.putExtra("IMAGE_PATH", photoPath)

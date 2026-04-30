@@ -16,14 +16,17 @@ import android.os.Environment
 import android.os.Looper
 import android.provider.Settings
 import android.util.Log
+import android.view.Gravity
 import android.view.View
 import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import com.google.android.gms.location.*
+import com.google.android.gms.tasks.Tasks
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
@@ -52,8 +55,10 @@ import java.util.Date
 import java.util.Locale
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import id.zelory.compressor.Compressor
 import id.zelory.compressor.constraint.format
 import id.zelory.compressor.constraint.quality
@@ -386,66 +391,77 @@ class VistoriaActivity : AppCompatActivity() {
         showLoading(true)
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val dateStr =
-                        SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault()).format(Date())
-                val gpsStr =
-                        if (location != null) {
-                            "Lat: ${String.format("%.5f", location.latitude)} | Lon: ${String.format("%.5f", location.longitude)}"
-                        } else {
-                            "GPS: Indisponível"
+                Log.d("VistoriaActivity", "Iniciando processamento da foto: $path")
+                
+                // 1. Prepara os dados (Data e GPS)
+                val dateStr = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault()).format(Date())
+                
+                // 1.1 Tenta obter localização (Aguarda até 5s se estiver nula)
+                var loc = location ?: capturedLocation
+                if (loc == null) {
+                    Log.d("VistoriaActivity", "GPS nulo, aguardando fix por até 5s...")
+                    withTimeoutOrNull(5000) {
+                        while (capturedLocation == null) {
+                            delay(500)
                         }
-
-                var addressStr = ""
-                if (location != null) {
-                    val end = getAddressString(location)
-                    if (end != null) addressStr = "\n$end"
+                        loc = capturedLocation
+                    }
                 }
+
+                // 1.2 Fallback final: Busca última localização conhecida do sistema
+                if (loc == null) {
+                    try {
+                        loc = Tasks.await(fusedLocationClient.lastLocation)
+                        Log.d("VistoriaActivity", "GPS Fallback (LastLocation): $loc")
+                    } catch (e: Exception) {
+                        Log.w("VistoriaActivity", "Falha ao obter LastLocation")
+                    }
+                }
+
+                val gpsStr = if (loc != null) {
+                    "Lat: ${String.format("%.5f", loc!!.latitude)} | Lon: ${String.format("%.5f", loc!!.longitude)}"
+                } else {
+                    "GPS: Indisponível"
+                }
+
+                // 2. Busca endereço com TIMEOUT aumentado (Geocoder pode travar)
+                val addressStr = if (loc != null) {
+                    val end = withTimeoutOrNull(8000) { getAddressString(loc!!) }
+                    if (end != null) "\n$end" else ""
+                } else ""
 
                 val textoFinal = "$dateStr\n$gpsStr$addressStr"
-                val sucesso = ImageWatermarkUtils.waterMarkImage(path, textoFinal)
                 
-                // --- Compressão da Imagem ---
+                // 3. PROCESSAMENTO UNIFICADO (Resize + Watermark + WebP)
+                // Usamos o nome original com extensão .webp
                 val originalFile = File(path)
-                Log.d("VistoriaActivity", "Iniciando compressão: ${originalFile.length() / 1024}KB")
-                
-                val compressedFile = Compressor.compress(applicationContext, originalFile) {
-                    resolution(1200, 1200) // 1200px é mais leve para o emulador
-                    quality(60)
-                    // Simplificado para evitar bugs de codec em emuladores
-                    @Suppress("DEPRECATION")
-                    format(Bitmap.CompressFormat.WEBP)
-                }
-                Log.i("VistoriaActivity", "Compressão concluída: Novo tamanho=${compressedFile.length() / 1024}KB")
-
-                // Move para o diretório final com a extensão correta (.webp)
-                // Usamos o mesmo diretório do original para garantir persistência
-                val finalFileName = originalFile.name.substringBeforeLast(".") + ".webp"
+                val finalFileName = originalFile.name.substringBeforeLast(".") + "_proc.webp"
                 val finalFile = File(originalFile.parent, finalFileName)
                 
-                // Se o arquivo comprimido for diferente do destino final, movemos ele
-                if (compressedFile.absolutePath != finalFile.absolutePath) {
-                    compressedFile.copyTo(finalFile, overwrite = true)
-                    compressedFile.delete()
+                Log.d("VistoriaActivity", "Chamando compressAndWatermark...")
+                val sucesso = ImageWatermarkUtils.compressAndWatermark(
+                    inputPath = path,
+                    outputPath = finalFile.absolutePath,
+                    watermarkText = textoFinal,
+                    targetSize = 1280
+                )
+
+                if (sucesso) {
+                    Log.i("VistoriaActivity", "Processamento concluído com sucesso: ${finalFile.absolutePath}")
+                    // Remove o arquivo original (RAW)
+                    if (originalFile.exists()) originalFile.delete()
+                    
+                    withContext(Dispatchers.Main) {
+                        adicionarFotoNaTela(currentPhotoField ?: "", finalFile.absolutePath)
+                    }
+                } else {
+                    throw Exception("Falha no processamento da imagem (Bitmap error)")
                 }
 
-                // Deleta o original se for diferente do arquivo final (evita deletar o próprio WebP se já for)
-                if (originalFile.exists() && originalFile.absolutePath != finalFile.absolutePath) {
-                    originalFile.delete()
-                }
-
-                withContext(Dispatchers.Main) {
-                    if (!sucesso) Log.w("VistoriaActivity", "Falha ao gravar marca d'água")
-                    adicionarFotoNaTela(currentPhotoField ?: "", finalFile.absolutePath)
-                }
             } catch (e: Exception) {
                 Log.e("VistoriaActivity", "Erro ao processar foto: ${e.message}", e)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(
-                                    this@VistoriaActivity,
-                                    "Erro ao processar foto.",
-                                    Toast.LENGTH_SHORT
-                            )
-                            .show()
+                    Toast.makeText(this@VistoriaActivity, "Erro ao processar foto.", Toast.LENGTH_SHORT).show()
                 }
             } finally {
                 withContext(Dispatchers.Main) { showLoading(false) }
@@ -505,10 +521,13 @@ class VistoriaActivity : AppCompatActivity() {
     }
 
     private fun adicionarFotoViewEstatica(path: String) {
+        val frame = FrameLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(250, 250).apply { setMargins(0, 0, 16, 0) }
+        }
+
         val imageView =
                 ImageView(this).apply {
-                    layoutParams =
-                            LinearLayout.LayoutParams(250, 250).apply { setMargins(0, 0, 16, 0) }
+                    layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
                     scaleType = ImageView.ScaleType.CENTER_CROP
                     background = ContextCompat.getDrawable(context, R.drawable.ic_launcher_background)
                     setOnClickListener {
@@ -517,7 +536,26 @@ class VistoriaActivity : AppCompatActivity() {
                         startActivity(intent)
                     }
                 }
-        containerFotosEstaticas.addView(imageView)
+
+        val deleteBtn = ImageView(this).apply {
+            layoutParams = FrameLayout.LayoutParams(60, 60).apply {
+                gravity = Gravity.TOP or Gravity.END
+            }
+            setImageResource(android.R.drawable.ic_menu_close_clear_cancel)
+            setBackgroundResource(android.R.drawable.presence_offline)
+            setPadding(8, 8, 8, 8)
+            setOnClickListener {
+                fotosEstaticasFilePaths.remove(path)
+                containerFotosEstaticas.removeView(frame)
+                if (fotosEstaticasFilePaths.isEmpty()) {
+                    txtSemFotos.visibility = View.VISIBLE
+                }
+            }
+        }
+
+        frame.addView(imageView)
+        frame.addView(deleteBtn)
+        containerFotosEstaticas.addView(frame)
         carregarImagemNoImageView(path, imageView)
     }
 

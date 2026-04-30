@@ -8,6 +8,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -147,17 +148,42 @@ class MultiPhotoRenderer : FormFieldRenderer {
 			val newPaths = if (currentPaths.isEmpty()) photoPath else "$currentPaths|$photoPath"
 			hiddenView.text = newPaths
 
-			// 2. Adiciona miniatura visual
+			// 2. Adiciona miniatura visual com botão de deletar
 			val photosContainer = viewContainer.findViewWithTag<LinearLayout>("photos_container") ?: return
 
-			val imageView = ImageView(context).apply {
+			// Wrapper para a imagem e o botão X
+			val frame = FrameLayout(context).apply {
 				layoutParams = LinearLayout.LayoutParams(250, 250).apply {
 					setMargins(0, 0, 16, 0)
 				}
+			}
+
+			val imageView = ImageView(context).apply {
+				layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
 				scaleType = ImageView.ScaleType.CENTER_CROP
 				background = context.getDrawable(android.R.drawable.screen_background_light_transparent)
 			}
-			photosContainer.addView(imageView)
+			
+			// Botão de Deletar (X)
+			val deleteBtn = ImageView(context).apply {
+				layoutParams = FrameLayout.LayoutParams(60, 60).apply {
+					gravity = Gravity.TOP or Gravity.END
+				}
+				setImageResource(android.R.drawable.ic_menu_close_clear_cancel)
+				setBackgroundResource(android.R.drawable.presence_offline) // Fundo escuro circular leve
+				setPadding(8, 8, 8, 8)
+				setOnClickListener {
+					// Lógica de Deletar
+					val paths = hiddenView.text.toString().split("|").toMutableList()
+					paths.remove(photoPath)
+					hiddenView.text = paths.joinToString("|")
+					photosContainer.removeView(frame)
+				}
+			}
+
+			frame.addView(imageView)
+			frame.addView(deleteBtn)
+			photosContainer.addView(frame)
 
 			imageView.setOnClickListener {
 				val intent = Intent(context, VisualizadorImagemActivity::class.java)

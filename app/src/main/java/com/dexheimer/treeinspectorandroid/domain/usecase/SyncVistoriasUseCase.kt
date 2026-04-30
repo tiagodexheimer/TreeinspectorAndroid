@@ -168,8 +168,8 @@ constructor(
             if (!originalFile.exists()) return path
 
             val compressedFile = Compressor.compress(context, originalFile) {
-                resolution(1600, 1600)
-                quality(60)
+                resolution(1280, 1280)
+                quality(75)
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
                     format(Bitmap.CompressFormat.WEBP_LOSSY)
                 } else {
