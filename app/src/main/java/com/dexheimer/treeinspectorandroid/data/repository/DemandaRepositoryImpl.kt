@@ -52,7 +52,7 @@ constructor(private val api: ApiService, private val dao: DemandaDao) : DemandaR
                     val response = api.salvarVistoria(request)
 
                     if (response.isSuccessful) {
-                        dao.updateStatus(demandaId, "concluido")
+                        dao.updateStatus(demandaId, "Concluído")
                         Result.success(Unit)
                     } else {
                         Result.failure(Exception("Falha no envio: ${response.code()}"))

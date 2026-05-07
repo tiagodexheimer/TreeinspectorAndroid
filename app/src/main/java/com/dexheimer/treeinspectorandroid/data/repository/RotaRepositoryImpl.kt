@@ -101,7 +101,11 @@ constructor(
             statusLocalMap: Map<Int, String>
     ): com.dexheimer.treeinspectorandroid.data.local.DemandaEntity {
         val localStatus = statusLocalMap[entity.id] ?: return entity
-        return if (localStatus.startsWith("concluido", ignoreCase = true)) {
+        
+        // CORREÇÃO: Preserva o status local se for algo mais avançado que "pendente"
+        // (Ex: Concluído, Em Rota, etc.)
+        val s = localStatus.lowercase()
+        return if (s.startsWith("concluido") || s.startsWith("concluído") || s == "em rota") {
             entity.copy(statusVistoria = localStatus)
         } else {
             entity

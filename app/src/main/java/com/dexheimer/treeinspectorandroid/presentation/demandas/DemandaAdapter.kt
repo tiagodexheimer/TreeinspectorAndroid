@@ -45,15 +45,17 @@ class DemandaAdapter(
 		holder.tipoTextView.text = "Tipo: ${demanda.tipoDemanda ?: "N/D"}"
 
 		// CORREÇÃO: status_vistoria -> statusVistoria
-		// CORREÇÃO APLICADA: Verifica se o status começa com "concluido" para incluir concluido_pendente
-		if (demanda.statusVistoria.startsWith("concluido", ignoreCase = true)) {
+		val status = demanda.statusVistoria.lowercase()
+		if (status.startsWith("concluido") || status.startsWith("concluído")) {
 			holder.statusTextView.text = "Concluída"
-			// CORREÇÃO: Usar o recurso de cor
 			holder.statusTextView.setTextColor(ContextCompat.getColor(holder.itemView.context, R.color.status_concluido))
 			holder.vistoriaButton.text = "Ver / Refazer Vistoria"
+		} else if (status == "em rota") {
+			holder.statusTextView.text = "Em Rota"
+			holder.statusTextView.setTextColor(ContextCompat.getColor(holder.itemView.context, R.color.status_em_rota))
+			holder.vistoriaButton.text = "Continuar Vistoria"
 		} else {
 			holder.statusTextView.text = "Pendente"
-			// CORREÇÃO: Usar o recurso de cor
 			holder.statusTextView.setTextColor(ContextCompat.getColor(holder.itemView.context, R.color.status_pendente))
 			holder.vistoriaButton.text = "Iniciar Vistoria"
 		}

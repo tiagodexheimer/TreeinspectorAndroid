@@ -10,4 +10,5 @@
 
     <color name="status_concluido">#1A5912</color>
     <color name="status_pendente">#C62828</color>
+    <color name="status_em_rota">#FF8F00</color>
 </resources>
